@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "feature": "",
+  "featureSlug": "",
+  "mode": "interactive",
+  "currentPhase": 0,
+  "completedPhases": [],
+  "phases": {
+    "0": { "name": "steering", "status": "pending", "completedAt": null },
+    "1": { "name": "init", "status": "pending", "completedAt": null },
+    "2": { "name": "requirements", "status": "pending", "completedAt": null, "approved": false },
+    "3": { "name": "gap", "status": "skipped", "completedAt": null },
+    "4": { "name": "design", "status": "pending", "completedAt": null, "approved": false },
+    "5": { "name": "validate-design", "status": "skipped", "completedAt": null },
+    "6": { "name": "tasks", "status": "pending", "completedAt": null, "approved": false },
+    "7": { "name": "impl", "status": "pending", "completedAt": null, "tasks": [] },
+    "8": { "name": "validate-impl", "status": "pending", "completedAt": null }
+  },
+  "tddCycles": [],
+  "errors": [],
+  "startedAt": null,
+  "lastUpdated": null,
+  "completedAt": null
+}

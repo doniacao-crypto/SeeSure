@@ -1,19 +1,3 @@
-# SDLC Project
-
-Template project for spec-driven development workflows.
-
-## Quick Start
-
-```bash
-# Install dependencies
-npm install
-
-# Run tests
-npm test
-```
-
----
-
 # Claude Code Enhanced Spec-Driven Development
 
 Enhanced Kiro-style Spec Driven Development with WebSearch integration, knowledge management, and error documentation.
