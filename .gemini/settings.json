@@ -1,0 +1,5 @@
+{
+  "customPromptsPath": ".gemini/customPrompts",
+  "contextFiles": ["GEMINI.md", "PROJECT.md"],
+  "syncWithClaude": true
+}

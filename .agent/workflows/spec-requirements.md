@@ -1,0 +1,285 @@
+---
+description: Generate comprehensive requirements for a specification with research documentation
+---
+
+# Requirements Generation with Research
+
+Generate comprehensive requirements for feature: **{{args}}** with automated research and knowledge documentation.
+
+## ⚠️ CRITICAL: MANDATORY RESEARCH FIRST ⚠️
+
+**YOU CANNOT PROCEED TO REQUIREMENTS GENERATION WITHOUT COMPLETING RESEARCH FIRST**
+
+This command has been structured to FORCE research before requirements generation. You must complete ALL research steps and produce the required documentation files before you can proceed to generate requirements.
+
+## STEP 1: FORCED RESEARCH PHASE (CANNOT BE SKIPPED)
+
+### 1.1 Execute Mandatory Web Search (NO EXCEPTIONS)
+
+**STOP HERE AND PERFORM RESEARCH IMMEDIATELY - DO NOT PROCEED WITHOUT COMPLETING THIS**
+
+Execute the following web search commands RIGHT NOW - you cannot continue until you have real research data:
+
+1. **REQUIRED Web Search Query 1**: Search for "latest version [technology stack relevant to {{args}}] 2025 2026 official documentation"
+   - **EXECUTE NOW**: Use web search immediately
+   - **REQUIRED OUTPUT**: Save results to `.kiro/knowledge/research-latest-versions-001.md`
+
+2. **REQUIRED Web Search Query 2**: Search for "[feature type for {{args}}] best practices implementation examples GitHub"
+   - **EXECUTE NOW**: Use web search immediately
+   - **REQUIRED OUTPUT**: Save results to `.kiro/knowledge/research-best-practices-001.md`
+
+3. **REQUIRED Web Search Query 3**: Search for "[feature name {{args}}] implementation challenges common issues Stack Overflow"
+   - **EXECUTE NOW**: Use web search immediately
+   - **REQUIRED OUTPUT**: Save results to `.kiro/knowledge/research-challenges-001.md`
+
+### 1.2 Create Research Documentation (MANDATORY OUTPUT)
+
+**YOU MUST CREATE THESE FILES - REQUIREMENTS GENERATION DEPENDS ON THEM**
+
+### Knowledge Documentation Format
+
+For each research finding, create structured documentation:
+
+```markdown
+# Research: {Topic} - {Date}
+
+## Source
+
+- **Search Query**: [exact search query used]
+- **Date Retrieved**: [current date]
+
+## Key Findings
+
+- **Latest Version**: [version info]
+- **Major Features**: [list key features]
+- **Breaking Changes**: [recent breaking changes]
+- **Best Practices**: [recommended approaches]
+
+## Implementation Relevance
+
+- **Applicable to Project**: [yes/no with reasoning]
+- **Integration Notes**: [how it affects our requirements]
+- **Constraints/Limitations**: [any limitations to consider]
+
+## Next Steps
+
+- **Further Research Needed**: [if any]
+- **Requirements Impact**: [how this affects requirements]
+```
+
+## ✅ STEP 2: VALIDATION CHECKPOINT
+
+**BEFORE PROCEEDING TO REQUIREMENTS, VERIFY YOU HAVE COMPLETED:**
+
+- [ ] ✅ Executed Web Search Query 1 and saved results
+- [ ] ✅ Executed Web Search Query 2 and saved results
+- [ ] ✅ Executed Web Search Query 3 and saved results
+- [ ] ✅ Created research documentation files in `.kiro/knowledge/`
+- [ ] ✅ Have real web research data (not assumptions)
+
+**IF ANY CHECKBOX IS EMPTY, STOP AND GO BACK TO STEP 1**
+
+## STEP 2.1: ACCURACY GATE & ITERATIVE SEARCH (MANDATORY)
+
+Before proceeding, run this accuracy gate. If any check fails, you MUST refine queries and repeat web search until all pass.
+
+### Accuracy Gate
+
+- [ ] At least **2 independent sources**, including the **official documentation/site**
+- [ ] Findings reference **2025 or 2026** releases/notes (or latest stable with date evidence)
+- [ ] Version numbers and capabilities **match across sources**
+- [ ] Constraints/limits and deprecations explicitly captured
+
+### Iterative Search Rules
+
+- Modify queries if data is missing/unclear (add product, version, “release notes”, “breaking changes”, “migration guide”, “2025 2026”).
+- Prefer queries including **vendor name + “official docs”**.
+- **Do NOT rely on prior model knowledge**; proceed only with corroborated sources saved in `.kiro/knowledge/`.
+
+## STEP 3: CONTEXT LOADING (ONLY AFTER RESEARCH COMPLETED)
+
+### Load Research-Based Context
+
+**FIRST**: Read and incorporate your research findings:
+
+- **REQUIRED**: Read `.kiro/knowledge/research-latest-versions-001.md`
+- **REQUIRED**: Read `.kiro/knowledge/research-best-practices-001.md`
+- **REQUIRED**: Read `.kiro/knowledge/research-challenges-001.md`
+
+## STEP 4: CONTEXT VALIDATION
+
+### Steering Context
+
+- Architecture context: @.kiro/steering/structure.md
+- Technical constraints: @.kiro/steering/tech.md
+- Product context: @.kiro/steering/product.md
+- Custom steering: Load all "Always" mode custom steering files from .kiro/steering/
+
+### Existing Spec Context
+
+- Current spec directory: !{ls -la .kiro/specs/{{args}}/}
+- Current requirements: @.kiro/specs/{{args}}/requirements.md
+- Spec metadata: @.kiro/specs/{{args}}/spec.json
+
+### Knowledge Context
+
+- Review all research documents in `.kiro/knowledge/` relevant to this feature
+- Incorporate latest findings into requirements generation
+
+## Phase 3: Generate Requirements
+
+Generate an initial set of requirements in EARS format based on the feature idea, then iterate with the user to refine them until they are complete and accurate.
+
+## Phase 4: Self-Review & Mistake Detection (NEW)
+
+**MANDATORY**: After completing requirements generation, perform systematic self-review:
+
+### Self-Review Process
+
+1. **Re-read ALL generated files** to check for mistakes
+2. **Systematic Check Categories**:
+   - Content accuracy and completeness
+   - EARS format compliance
+   - Logic consistency and integration
+   - Missing or incorrect information
+
+3. **Mistake Documentation**: If mistakes found, document in `.kiro/knowledge/errors/mistake-{description}-{number}.md`
+
+4. **Self-Correction Loop**:
+   - Document the mistake with context
+   - Apply corrections immediately
+   - Re-read files again
+   - Repeat until no obvious mistakes remain
+
+### Mistake Documentation Format
+
+```markdown
+# Mistake: {Type/Description}
+
+## Detection Details
+
+- **File(s)**: [affected files]
+- **Mistake Type**: [content/format/logic/integration]
+- **Context**: [requirements generation context]
+
+## Correction Applied
+
+- **Fix**: [detailed correction description]
+- **Verification**: [how fix was verified]
+
+## Prevention
+
+- **Future Avoidance**: [prevention strategy]
+```
+
+Don't focus on implementation details in this phase. Instead, just focus on writing requirements which will later be turned into a design.
+
+### Requirements Generation Guidelines
+
+1. **Focus on Core Functionality**: Start with the essential features from the user's idea
+2. **Use EARS Format**: All acceptance criteria must use proper EARS syntax
+3. **No Sequential Questions**: Generate initial version first, then iterate based on user feedback
+4. **Keep It Manageable**: Create a solid foundation that can be expanded through user review
+5. **Choose an appropriate subject**: For software projects, use the concrete system/service name (e.g., "Checkout Service"). For non-software, select a responsible subject (e.g., process/workflow, team/role, artifact/document, campaign, protocol).
+
+### 1. EARS Format Requirements
+
+**EARS (Easy Approach to Requirements Syntax)** is the recommended format for acceptance criteria:
+
+**Primary EARS Patterns:**
+
+- WHEN [event/condition] THEN [system/subject] SHALL [response]
+- IF [precondition/state] THEN [system/subject] SHALL [response]
+- WHILE [ongoing condition] THE [system/subject] SHALL [continuous behavior]
+- WHERE [location/context/trigger] THE [system/subject] SHALL [contextual behavior]
+
+**Combined Patterns:**
+
+- WHEN [event] AND [additional condition] THEN [system/subject] SHALL [response]
+- IF [condition] AND [additional condition] THEN [system/subject] SHALL [response]
+
+### 2. Requirements Document Structure
+
+Generate requirements.md in the language specified in spec.json (check `@.kiro/specs/{{args}}/spec.json` for "language" field):
+
+```markdown
+# Requirements Document
+
+## Introduction
+
+[Clear introduction summarizing the feature and its business value]
+
+## Requirements
+
+### Requirement 1: [Major Objective Area]
+
+**Objective:** As a [role/stakeholder], I want [feature/capability/outcome], so that [benefit]
+
+#### Acceptance Criteria
+
+This section should have EARS requirements
+
+1. WHEN [event] THEN [system/subject] SHALL [response]
+2. IF [precondition] THEN [system/subject] SHALL [response]
+3. WHILE [ongoing condition] THE [system/subject] SHALL [continuous behavior]
+4. WHERE [location/context/trigger] THE [system/subject] SHALL [contextual behavior]
+
+### Requirement 2: [Next Major Objective Area]
+
+**Objective:** As a [role/stakeholder], I want [feature/capability/outcome], so that [benefit]
+
+1. WHEN [event] THEN [system/subject] SHALL [response]
+2. WHEN [event] AND [condition] THEN [system/subject] SHALL [response]
+
+### Requirement 3: [Additional Major Areas]
+
+[Continue pattern for all major functional areas]
+```
+
+### 3. Update Metadata
+
+Update spec.json with:
+
+```json
+{
+  "phase": "requirements-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": false
+    }
+  },
+  "updated_at": "current_timestamp"
+}
+```
+
+### 4. Document Generation Only
+
+Generate the requirements document content ONLY. Do not include any review or approval instructions in the actual document file.
+
+---
+
+## Next Phase: Interactive Approval
+
+After generating requirements.md, review the requirements and choose:
+
+**If requirements look good:**
+Run `/kiro:spec-design {{args}} -y` to proceed to design phase
+
+**If requirements need modification:**
+Request changes, then re-run this command after modifications
+
+The `-y` flag auto-approves requirements and generates design directly, streamlining the workflow while maintaining review enforcement.
+
+## Instructions
+
+1. **Check spec.json for language** - Use the language specified in the metadata
+2. **Generate initial requirements** based on the feature idea WITHOUT asking sequential questions first
+3. **Apply EARS format** - Use proper EARS syntax patterns for all acceptance criteria
+4. **Focus on core functionality** - Start with essential features and user workflows
+5. **Structure clearly** - Group related functionality into logical requirement areas
+6. **Make requirements testable** - Each acceptance criterion should be verifiable
+7. **Update tracking metadata** upon completion
+
+Generate requirements that provide a solid foundation for the design phase, focusing on the core functionality from the feature idea.
+think deeply

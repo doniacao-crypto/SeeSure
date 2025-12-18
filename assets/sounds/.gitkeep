@@ -1,0 +1,5 @@
+# Sound files directory
+# Add alert sound files here:
+# - beep_low.wav (suspicious alert)
+# - beep_medium.wav (warning alert)
+# - alarm.wav (critical alert)

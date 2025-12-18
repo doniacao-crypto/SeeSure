@@ -1,0 +1,66 @@
+# Claude Code GitHub Actions - AI-powered code review and assistance
+
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Custom prompt for Claude'
+        required: false
+        type: string
+
+concurrency:
+  group: claude-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  claude-mention:
+    if: |
+      (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Claude Code Response
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  claude-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR for:
+            1. **Spec Compliance**: Check if changes align with specs in /specs/features/
+            2. **Test Coverage**: Verify tests exist for new/changed code
+            3. **Code Quality**: Look for bugs, security issues, performance concerns
+            4. **Standards**: Ensure adherence to conventions in CLAUDE.md
+            
+            Format: 🟢 APPROVED / 🟡 CHANGES REQUESTED / 🔴 BLOCKED
+          claude_args: "--max-turns 8"

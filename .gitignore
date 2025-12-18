@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+*.whl
+.venv/
+venv/
+ENV/
+.uv/
+
+# Model weights (large files)
+*.pt
+*.onnx
+*.engine
+
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+
+# Testing
+coverage/
+playwright-report/
+test-results/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Cache
+.cache/
+.turbo/
+
+# Temporary
+tmp/
+temp/
+
+# Secrets
+*.pem
+*.key
+secrets/
