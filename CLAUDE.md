@@ -35,6 +35,10 @@ Enhanced Kiro-style Spec Driven Development with WebSearch integration, knowledg
 
 ### Active Specifications
 
+- **eye-movement-assessment**: Clinical-grade eye tracking assessment system (Phase: initialized, POC: completed)
+  - Status: `/kiro:spec-status eye-movement-assessment`
+  - Next: `/kiro:spec-requirements eye-movement-assessment`
+
 - Check `.kiro/specs/` for active specifications
 - Use `/kiro:spec-status [feature-name]` to check progress
 - Review `.kiro/knowledge/` for relevant research before starting new specs

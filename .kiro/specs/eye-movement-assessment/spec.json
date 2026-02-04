@@ -1,0 +1,43 @@
+{
+  "feature_name": "eye-movement-assessment",
+  "display_name": "Eye Movement Assessment System",
+  "created_at": "2024-12-18T12:20:00Z",
+  "updated_at": "2025-12-18T13:30:00Z",
+  "language": "en",
+  "phase": "implementation-started",
+  "description": "Clinical-grade desktop application for assessing eye movement capabilities using webcam-based eye tracking with MediaPipe",
+  "target_users": ["ophthalmologists", "optometrists", "vision therapists", "researchers"],
+  "platform": "Desktop (Python/PyQt6)",
+  "key_requirements": [
+    "High-precision gaze estimation (<2° visual angle accuracy)",
+    "Head pose compensation",
+    "Validated calibration system with quality metrics",
+    "Standardized test protocols (smooth pursuit, saccades, fixation)",
+    "Comprehensive metrics (accuracy, latency, smoothness)",
+    "Clinical-grade reporting with visualizations",
+    "Profile management for longitudinal tracking"
+  ],
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": false,
+      "approved_at": null,
+      "approved_by": null
+    },
+    "design": {
+      "generated": true,
+      "approved": false,
+      "approved_at": null,
+      "approved_by": null
+    },
+    "tasks": {
+      "generated": true,
+      "approved": false,
+      "approved_at": null,
+      "approved_by": null
+    }
+  },
+  "ready_for_implementation": false,
+  "poc_completed": true,
+  "poc_location": "src/"
+}

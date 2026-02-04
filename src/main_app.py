@@ -29,13 +29,19 @@ from smooth_pursuit_test import (
 
 class CameraThread(QThread):
     """Thread for camera capture to avoid blocking UI."""
-    frame_ready = pyqtSignal(np.ndarray, EyeData)
+    # Signal now includes capture timestamp for timing synchronization
+    frame_ready = pyqtSignal(np.ndarray, EyeData, float)
 
     def __init__(self, eye_tracker: EyeTracker):
         super().__init__()
         self.eye_tracker = eye_tracker
         self.running = False
         self.cap = None
+
+        # FPS measurement
+        self._frame_times = []
+        self._fps_window = 30  # Rolling window for FPS calculation
+        self._actual_fps = 0.0
 
     def run(self):
         self.cap = cv2.VideoCapture(0)
@@ -46,14 +52,31 @@ class CameraThread(QThread):
         self.running = True
         while self.running:
             ret, frame = self.cap.read()
+            # Capture timestamp immediately after reading frame
+            capture_time = time.time()
+
             if ret:
+                # Update FPS measurement
+                self._frame_times.append(capture_time)
+                if len(self._frame_times) > self._fps_window:
+                    self._frame_times.pop(0)
+                if len(self._frame_times) >= 2:
+                    time_span = self._frame_times[-1] - self._frame_times[0]
+                    if time_span > 0:
+                        self._actual_fps = (len(self._frame_times) - 1) / time_span
+
                 # Mirror the frame for more intuitive interaction
                 frame = cv2.flip(frame, 1)
                 eye_data = self.eye_tracker.process_frame(frame)
-                self.frame_ready.emit(frame, eye_data)
+                # Pass capture timestamp with frame
+                self.frame_ready.emit(frame, eye_data, capture_time)
 
-            # Small sleep to prevent CPU overload
-            self.msleep(16)  # ~60 FPS max
+            # Reduced sleep to minimize latency (was 16ms)
+            self.msleep(5)
+
+    def get_actual_fps(self) -> float:
+        """Get the measured actual FPS."""
+        return self._actual_fps
 
     def stop(self):
         self.running = False
@@ -267,10 +290,14 @@ class TestWidget(QWidget):
         super().__init__(parent)
         self.gaze_estimator = gaze_estimator
         self.test: Optional[SmoothPursuitTest] = None
+        self._pending_config: Optional[TestConfig] = None
 
         self.is_testing = False
         self.current_gaze: Optional[tuple] = None
         self.show_gaze_cursor = True
+
+        # Capture timestamp for synchronization
+        self._last_capture_time: Optional[float] = None
 
         self.setStyleSheet("background-color: #0f0f23;")
 
@@ -279,35 +306,69 @@ class TestWidget(QWidget):
         self.timer.timeout.connect(self._check_test_complete)
 
     def start_test(self, config: TestConfig):
-        """Start the test."""
-        screen = QApplication.primaryScreen().geometry()
-        self.test = SmoothPursuitTest(screen.width(), screen.height(), config)
+        """Start the test after widget is properly sized."""
+        # Store config and delay start to ensure widget is resized after fullscreen
+        self._pending_config = config
+        QTimer.singleShot(100, self._begin_test)
+
+    def _begin_test(self):
+        """Actually begin the test after widget is properly sized."""
+        if self._pending_config is None:
+            return
+
+        config = self._pending_config
+        self._pending_config = None
+
+        # Use widget's actual dimensions, not screen dimensions
+        # This ensures target positions stay within the visible area
+        width = self.width()
+        height = self.height()
+
+        self.test = SmoothPursuitTest(width, height, config)
         self.test.start()
         self.is_testing = True
         self.timer.start(100)  # Check every 100ms
         self.update()
 
-    def process_eye_data(self, eye_data: EyeData):
-        """Process eye data during test."""
+    def resizeEvent(self, event):
+        """Handle widget resize to update test dimensions."""
+        super().resizeEvent(event)
+        # Update test dimensions if test is running
+        if self.test is not None and self.is_testing:
+            self.test.update_screen_dimensions(self.width(), self.height())
+        self.update()
+
+    def process_eye_data(self, eye_data: EyeData, capture_time: Optional[float] = None):
+        """Process eye data during test.
+
+        Args:
+            eye_data: Eye tracking data
+            capture_time: Timestamp when frame was captured (for synchronization)
+        """
         if not self.is_testing or self.test is None:
             return
+
+        # Store capture time for synchronized recording
+        self._last_capture_time = capture_time
 
         # Get gaze position
         gaze = self.gaze_estimator.estimate_gaze(eye_data)
         self.current_gaze = gaze
 
-        # Record frame
+        # Record frame with capture timestamp for proper synchronization
         if gaze:
             self.test.record_frame(
                 gaze[0], gaze[1],
                 eye_data.head_pitch, eye_data.head_yaw,
-                eye_data.face_detected
+                eye_data.face_detected,
+                capture_time=capture_time
             )
         else:
             self.test.record_frame(
                 None, None,
                 eye_data.head_pitch, eye_data.head_yaw,
-                eye_data.face_detected
+                eye_data.face_detected,
+                capture_time=capture_time
             )
 
         self.update()
@@ -571,11 +632,33 @@ class MainWindow(QMainWindow):
         """)
         results_layout.addWidget(self.results_text)
 
+        # Button row
+        results_btn_layout = QHBoxLayout()
+
         self.back_btn = QPushButton("Back to Home")
         self.back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        results_layout.addWidget(self.back_btn)
+        results_btn_layout.addWidget(self.back_btn)
+
+        self.export_full_btn = QPushButton("Export Full Data")
+        self.export_full_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00b894;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #00a884; }
+        """)
+        self.export_full_btn.clicked.connect(self._export_full_data)
+        results_btn_layout.addWidget(self.export_full_btn)
+
+        results_layout.addLayout(results_btn_layout)
 
         self.stack.addWidget(results_widget)
+
+        # Initialize last result storage
+        self._last_result: Optional[TestResult] = None
 
         main_layout.addWidget(self.stack)
 
@@ -629,8 +712,14 @@ class MainWindow(QMainWindow):
         self.calibration_widget.calibration_complete.connect(self._on_calibration_complete)
         self.test_widget.test_complete.connect(self._on_test_complete)
 
-    def _on_frame_ready(self, frame: np.ndarray, eye_data: EyeData):
-        """Handle new camera frame."""
+    def _on_frame_ready(self, frame: np.ndarray, eye_data: EyeData, capture_time: float):
+        """Handle new camera frame.
+
+        Args:
+            frame: Camera frame
+            eye_data: Eye tracking data
+            capture_time: Timestamp when frame was captured
+        """
         self.current_eye_data = eye_data
 
         # Update camera preview with debug visualization
@@ -647,23 +736,24 @@ class MainWindow(QMainWindow):
         )
         self.camera_label.setPixmap(pixmap)
 
-        # Update status
+        # Update status including FPS
+        actual_fps = self.camera_thread.get_actual_fps()
         if eye_data.face_detected:
-            self.face_status.setText("Face: ✓ Detected")
+            self.face_status.setText(f"Face: ✓ Detected ({actual_fps:.1f} FPS)")
             self.face_status.setStyleSheet("color: #00b894;")
         else:
-            self.face_status.setText("Face: ✗ Not Detected")
+            self.face_status.setText(f"Face: ✗ Not Detected ({actual_fps:.1f} FPS)")
             self.face_status.setStyleSheet("color: #ff6b6b;")
 
         self.head_pose_label.setText(
             f"Head: P={eye_data.head_pitch:.1f}° Y={eye_data.head_yaw:.1f}° R={eye_data.head_roll:.1f}°"
         )
 
-        # Forward to active widget
+        # Forward to active widget with capture timestamp
         if self.stack.currentWidget() == self.calibration_widget:
             self.calibration_widget.process_eye_data(eye_data)
         elif self.stack.currentWidget() == self.test_widget:
-            self.test_widget.process_eye_data(eye_data)
+            self.test_widget.process_eye_data(eye_data, capture_time)
 
     def _start_calibration(self):
         """Start calibration process."""
@@ -732,11 +822,38 @@ class MainWindow(QMainWindow):
         """Handle test completion."""
         self.test_widget.showNormal()
 
+        # Store result for export
+        self._last_result = result
+
+        # Auto-save summary to results directory
+        try:
+            summary_path = result.save_summary()
+            save_message = f"\n[Results auto-saved to: {summary_path}]"
+        except Exception as e:
+            save_message = f"\n[Warning: Failed to auto-save results: {e}]"
+
         # Generate and display report
         report = generate_report(result)
-        self.results_text.setText(report)
+        self.results_text.setText(report + save_message)
 
         self.stack.setCurrentIndex(3)  # Results view
+
+    def _export_full_data(self):
+        """Export full test data including all frame-by-frame details."""
+        if self._last_result is None:
+            QMessageBox.warning(self, "No Data", "No test results to export.")
+            return
+
+        try:
+            filepath = self._last_result.save_full_data()
+            QMessageBox.information(
+                self, "Export Successful",
+                f"Full test data exported to:\n{filepath}\n\n"
+                f"Includes {len(self._last_result.frames)} frames with "
+                "gaze/target positions and head pose data."
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", f"Failed to export data: {e}")
 
     def closeEvent(self, event):
         """Clean up on close."""

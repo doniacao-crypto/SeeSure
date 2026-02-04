@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-12-19T00:33:17.223543",
+  "pattern": "circular",
+  "duration": 10,
+  "total_frames": 239,
+  "metrics": {
+    "tracking_ratio": 1.0,
+    "avg_distance_px": 741.24,
+    "accuracy_score": 0,
+    "smooth_score": 0,
+    "lag_ms": 0.0
+  },
+  "clinical_metrics": null
+}
