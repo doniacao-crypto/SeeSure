@@ -6,6 +6,7 @@ and catch-up saccade detection.
 """
 
 import numpy as np
+import pandas as pd
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, Any
 from enum import Enum
@@ -232,6 +233,69 @@ class TestResult:
             json.dump(self.to_full_dict(), f, indent=2)
 
         return filepath
+
+    def save_csv(self, results_dir: str = "results") -> str:
+        """
+        Save test data to CSV file for spreadsheet analysis.
+
+        Creates two files:
+        - Summary CSV with test metadata and metrics
+        - Frames CSV with per-frame tracking data
+
+        Args:
+            results_dir: Directory to save results (created if not exists)
+
+        Returns:
+            Path to the frames CSV file
+        """
+        os.makedirs(results_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = f"test_{self.pattern.value}_{timestamp}"
+
+        # Save frames data
+        frames_data = [
+            {
+                "timestamp": f.timestamp,
+                "target_x": f.target_x,
+                "target_y": f.target_y,
+                "gaze_x": f.gaze_x,
+                "gaze_y": f.gaze_y,
+                "head_pitch": round(f.head_pitch, 4),
+                "head_yaw": round(f.head_yaw, 4),
+                "face_detected": f.face_detected
+            }
+            for f in self.frames
+        ]
+        frames_df = pd.DataFrame(frames_data)
+        frames_path = os.path.join(results_dir, f"{base_name}_frames.csv")
+        frames_df.to_csv(frames_path, index=False)
+
+        # Save summary data
+        summary = self.to_summary_dict()
+        # Flatten nested metrics for CSV
+        flat_summary = {
+            "pattern": summary.get("pattern"),
+            "duration_seconds": summary.get("duration_seconds"),
+            "total_frames": summary.get("total_frames"),
+            "valid_frames": summary.get("valid_frames"),
+            "valid_frame_ratio": summary.get("valid_frame_ratio"),
+        }
+        if summary.get("metrics"):
+            metrics = summary["metrics"]
+            flat_summary.update({
+                "pursuit_gain": metrics.get("pursuit_gain"),
+                "accuracy_degrees": metrics.get("accuracy_degrees"),
+                "rmse_degrees": metrics.get("rmse_degrees"),
+                "smoothness": metrics.get("smoothness"),
+                "saccade_count": metrics.get("saccade_count"),
+                "saccade_rate_hz": metrics.get("saccade_rate_hz"),
+            })
+
+        summary_df = pd.DataFrame([flat_summary])
+        summary_path = os.path.join(results_dir, f"{base_name}_summary.csv")
+        summary_df.to_csv(summary_path, index=False)
+
+        return frames_path
 
 
 class SmoothPursuitTest:

@@ -264,6 +264,20 @@ class MainWindow(QMainWindow):
         self.export_full_btn.clicked.connect(self._export_full_data)
         btn_layout.addWidget(self.export_full_btn)
 
+        self.export_csv_btn = QPushButton("Export CSV")
+        self.export_csv_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0984e3;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #0873c4; }
+        """)
+        self.export_csv_btn.clicked.connect(self._export_csv)
+        btn_layout.addWidget(self.export_csv_btn)
+
         layout.addLayout(btn_layout)
         return widget
 
@@ -460,6 +474,23 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             QMessageBox.warning(self, "Export Failed", f"Failed to export data: {e}")
+
+    def _export_csv(self):
+        """Export test data to CSV format for spreadsheet analysis."""
+        if self._last_result is None:
+            QMessageBox.warning(self, "No Data", "No test results to export.")
+            return
+
+        try:
+            filepath = self._last_result.save_csv()
+            QMessageBox.information(
+                self, "Export Successful",
+                f"CSV data exported to:\n{filepath}\n\n"
+                f"Also created a summary CSV file.\n"
+                "Import into Excel, Google Sheets, or any spreadsheet app."
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", f"Failed to export CSV: {e}")
 
     def closeEvent(self, event):
         """Clean up on close."""
