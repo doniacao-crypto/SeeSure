@@ -338,6 +338,99 @@ class MetricsCalculator:
 
         return bcea
 
+    def detect_microsaccades(self,
+                             gaze_positions: np.ndarray,
+                             timestamps: np.ndarray,
+                             max_amplitude_deg: float = 1.0) -> List[SaccadeEvent]:
+        """
+        Detect microsaccades during fixation using velocity threshold.
+
+        Microsaccades are small, involuntary eye movements (< 1 degree amplitude)
+        that occur during attempted fixation.
+
+        Args:
+            gaze_positions: Nx2 array of gaze (x, y) positions in pixels
+            timestamps: N array of timestamps in seconds
+            max_amplitude_deg: Maximum amplitude for microsaccade classification
+
+        Returns:
+            List of detected microsaccade events (as SaccadeEvent objects)
+        """
+        # Use microsaccade velocity threshold and shorter min duration
+        all_movements = self.detect_saccades(
+            gaze_positions,
+            timestamps,
+            velocity_threshold_deg_s=self.microsaccade_velocity_threshold,
+            min_duration_ms=10.0  # Microsaccades can be very brief
+        )
+
+        # Filter by amplitude (microsaccades are small)
+        microsaccades = [
+            m for m in all_movements
+            if m.amplitude_deg <= max_amplitude_deg
+        ]
+
+        return microsaccades
+
+    def calculate_fixation_metrics(self,
+                                   gaze_positions: np.ndarray,
+                                   timestamps: np.ndarray,
+                                   bcea_probability: float = 0.68) -> FixationMetrics:
+        """
+        Calculate comprehensive fixation stability metrics.
+
+        Args:
+            gaze_positions: Nx2 array of gaze (x, y) positions in pixels
+            timestamps: N array of timestamps in seconds
+            bcea_probability: Probability for BCEA calculation (default 0.68)
+
+        Returns:
+            FixationMetrics object with all calculated metrics
+        """
+        if len(timestamps) < 3:
+            return FixationMetrics(
+                bcea_degrees_sq=0.0,
+                horizontal_std_degrees=0.0,
+                vertical_std_degrees=0.0,
+                microsaccade_count=0,
+                microsaccade_rate_hz=0.0,
+                fixation_duration_ms=0.0
+            )
+
+        # Calculate BCEA
+        bcea = self.calculate_bcea(gaze_positions, bcea_probability)
+
+        # Calculate dispersion
+        gaze_x = gaze_positions[:, 0]
+        gaze_y = gaze_positions[:, 1]
+        h_std = self.screen.pixels_to_degrees(np.std(gaze_x))
+        v_std = self.screen.pixels_to_degrees(np.std(gaze_y))
+
+        # Detect microsaccades
+        microsaccades = self.detect_microsaccades(gaze_positions, timestamps)
+        microsaccade_count = len(microsaccades)
+
+        # Calculate microsaccade rate
+        duration_s = timestamps[-1] - timestamps[0]
+        if duration_s > 0:
+            microsaccade_rate_hz = microsaccade_count / duration_s
+        else:
+            microsaccade_rate_hz = 0.0
+
+        # Calculate stable fixation duration (time not in microsaccades)
+        total_duration_ms = duration_s * 1000
+        microsaccade_duration_ms = sum(m.duration_ms for m in microsaccades)
+        fixation_duration_ms = total_duration_ms - microsaccade_duration_ms
+
+        return FixationMetrics(
+            bcea_degrees_sq=bcea,
+            horizontal_std_degrees=h_std,
+            vertical_std_degrees=v_std,
+            microsaccade_count=microsaccade_count,
+            microsaccade_rate_hz=microsaccade_rate_hz,
+            fixation_duration_ms=max(0.0, fixation_duration_ms)
+        )
+
     def calculate_rms_error(self,
                             target_positions: np.ndarray,
                             gaze_positions: np.ndarray) -> float:
