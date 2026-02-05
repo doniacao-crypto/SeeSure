@@ -27,9 +27,10 @@ from smooth_pursuit_test import (
 from session_history import SessionHistoryManager, SessionSummary
 from visualization import TrajectoryVisualizer, generate_trajectory_from_result
 from saccade_test import SaccadeTest, SaccadeTestConfig, SaccadeTestType, SaccadeTestResult, generate_saccade_report
+from validation import ValidationTest, ValidationConfig, ValidationPattern, ValidationResult, generate_validation_report
 
 # Import UI widgets from separate modules
-from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget
+from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget, ValidationWidget
 
 
 class MainWindow(QMainWindow):
@@ -84,6 +85,12 @@ class MainWindow(QMainWindow):
         self.saccade_widget.set_gaze_estimator(self.gaze_estimator)
         self.saccade_widget.test_complete.connect(self._on_saccade_complete)
         self.stack.addWidget(self.saccade_widget)
+        
+        # Validation widget
+        self.validation_widget = ValidationWidget()
+        self.validation_widget.set_gaze_estimator(self.gaze_estimator)
+        self.validation_widget.validation_complete.connect(self._on_validation_complete)
+        self.stack.addWidget(self.validation_widget)
         
         # Results view
         self.stack.addWidget(self._create_results_view())
@@ -194,6 +201,22 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(self.save_profile_btn)
         btn_layout.addWidget(self.load_profile_btn)
         layout.addLayout(btn_layout)
+
+        # Validation button
+        self.validate_btn = QPushButton("🎯 Validate Accuracy")
+        self.validate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00b894;
+                color: white;
+                padding: 8px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #00a884; }
+        """)
+        self.validate_btn.setToolTip("Test gaze accuracy against known positions (requires calibration)")
+        self.validate_btn.clicked.connect(self._start_validation)
+        layout.addWidget(self.validate_btn)
 
         return group
 
@@ -423,7 +446,7 @@ class MainWindow(QMainWindow):
     def _show_history(self):
         """Show the history view."""
         self._refresh_history()
-        self.stack.setCurrentIndex(5)  # History view index
+        self.stack.setCurrentIndex(6)  # History view index
 
     def _refresh_history(self):
         """Refresh the history list."""
@@ -464,7 +487,7 @@ class MainWindow(QMainWindow):
                         report += f"{key}: {value}\n"
             
             self.results_text.setText(report)
-            self.stack.setCurrentIndex(4)  # Results view
+            self.stack.setCurrentIndex(5)  # Results view
 
     def _delete_history_session(self):
         """Delete the selected history session."""
@@ -595,6 +618,8 @@ class MainWindow(QMainWindow):
             self.test_widget.process_eye_data(eye_data, capture_time)
         elif self.stack.currentWidget() == self.saccade_widget:
             self.saccade_widget.process_eye_data(eye_data)
+        elif self.stack.currentWidget() == self.validation_widget:
+            self.validation_widget.process_eye_data(eye_data)
 
     def _start_calibration(self):
         """Start calibration process."""
@@ -706,7 +731,7 @@ class MainWindow(QMainWindow):
         report = generate_report(result)
         self.results_text.setText(report + save_message)
 
-        self.stack.setCurrentIndex(4)  # Results view (index shifted due to saccade widget)
+        self.stack.setCurrentIndex(5)  # Results view (index shifted due to saccade widget)
 
     def _on_saccade_complete(self, result: SaccadeTestResult):
         """Handle saccade test completion."""
@@ -719,7 +744,49 @@ class MainWindow(QMainWindow):
         report = generate_saccade_report(result)
         self.results_text.setText(report)
         
-        self.stack.setCurrentIndex(4)  # Results view
+        self.stack.setCurrentIndex(5)  # Results view
+
+    def _start_validation(self):
+        """Start gaze accuracy validation."""
+        if not self.gaze_estimator.is_calibrated:
+            QMessageBox.warning(
+                self, "Calibration Required",
+                "Please complete calibration before running validation."
+            )
+            return
+        
+        config = ValidationConfig(
+            pattern=ValidationPattern.GRID_9,
+            samples_per_point=30,
+            point_duration_ms=2000.0
+        )
+        
+        self.stack.setCurrentWidget(self.validation_widget)
+        self.validation_widget.showFullScreen()
+        self.validation_widget.start_validation(config)
+
+    def _on_validation_complete(self, result: ValidationResult):
+        """Handle validation completion."""
+        self.validation_widget.showNormal()
+        
+        # Store result
+        self._last_validation_result = result
+        
+        # Generate and display report
+        report = generate_validation_report(result)
+        self.results_text.setText(report)
+        
+        # Update calibration status with accuracy info
+        if result.accuracy_degrees is not None:
+            acc = result.accuracy_degrees
+            if acc < 2.0:
+                self.calibration_status.setText(f"🎯 Calibration: ✓ Validated ({acc:.2f}°)")
+                self.calibration_status.setStyleSheet("color: #00b894;")
+            else:
+                self.calibration_status.setText(f"🎯 Calibration: ⚠️ {acc:.2f}° (>2°)")
+                self.calibration_status.setStyleSheet("color: #fdcb6e;")
+        
+        self.stack.setCurrentIndex(5)  # Results view
 
     def _export_full_data(self):
         """Export full test data including all frame-by-frame details."""
