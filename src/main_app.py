@@ -29,6 +29,7 @@ from visualization import TrajectoryVisualizer, generate_trajectory_from_result
 from saccade_test import SaccadeTest, SaccadeTestConfig, SaccadeTestType, SaccadeTestResult, generate_saccade_report
 from validation import ValidationTest, ValidationConfig, ValidationPattern, ValidationResult, generate_validation_report
 from pdf_report import PDFReportGenerator, PatientInfo, ClinicInfo
+from patient_manager import PatientManager, Patient
 
 # Import UI widgets from separate modules
 from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget, ValidationWidget
@@ -46,6 +47,8 @@ class MainWindow(QMainWindow):
         self.eye_tracker = EyeTracker()
         self.gaze_estimator = GazeEstimator()
         self.session_history = SessionHistoryManager()
+        self.patient_manager = PatientManager()
+        self.current_patient: Optional[Patient] = None
 
         # Camera thread
         self.camera_thread = CameraThread(self.eye_tracker)
@@ -128,6 +131,9 @@ class MainWindow(QMainWindow):
         # Status indicators
         layout.addWidget(self._create_status_group())
         
+        # Patient selector
+        layout.addWidget(self._create_patient_group())
+        
         # Calibration controls
         layout.addWidget(self._create_calibration_group())
         
@@ -174,6 +180,152 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.head_pose_label)
 
         return group
+
+    def _create_patient_group(self) -> QGroupBox:
+        """Create patient selection group."""
+        group = QGroupBox("Patient")
+        layout = QVBoxLayout(group)
+        
+        # Patient selector dropdown
+        self.patient_combo = QComboBox()
+        self.patient_combo.addItem("-- No Patient Selected --", None)
+        self._refresh_patient_list()
+        self.patient_combo.currentIndexChanged.connect(self._on_patient_changed)
+        layout.addWidget(self.patient_combo)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        
+        new_btn = QPushButton("➕ New")
+        new_btn.setToolTip("Create new patient profile")
+        new_btn.clicked.connect(self._create_new_patient)
+        btn_layout.addWidget(new_btn)
+        
+        edit_btn = QPushButton("✏️ Edit")
+        edit_btn.setToolTip("Edit selected patient")
+        edit_btn.clicked.connect(self._edit_patient)
+        btn_layout.addWidget(edit_btn)
+        
+        layout.addLayout(btn_layout)
+        
+        return group
+
+    def _refresh_patient_list(self):
+        """Refresh patient dropdown list."""
+        current_id = None
+        if self.current_patient:
+            current_id = self.current_patient.id
+        
+        # Clear except first item
+        while self.patient_combo.count() > 1:
+            self.patient_combo.removeItem(1)
+        
+        # Add patients
+        for patient in self.patient_manager.list_all():
+            self.patient_combo.addItem(patient.display_name(), patient.id)
+        
+        # Restore selection
+        if current_id:
+            for i in range(self.patient_combo.count()):
+                if self.patient_combo.itemData(i) == current_id:
+                    self.patient_combo.setCurrentIndex(i)
+                    break
+
+    def _on_patient_changed(self, index: int):
+        """Handle patient selection change."""
+        patient_id = self.patient_combo.itemData(index)
+        if patient_id:
+            self.current_patient = self.patient_manager.get(patient_id)
+        else:
+            self.current_patient = None
+
+    def _create_new_patient(self):
+        """Show dialog to create new patient."""
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QCheckBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("New Patient")
+        dialog.setMinimumWidth(300)
+        layout = QFormLayout(dialog)
+        
+        name_edit = QLineEdit()
+        dob_edit = QLineEdit()
+        dob_edit.setPlaceholderText("YYYY-MM-DD")
+        gender_edit = QLineEdit()
+        glasses_check = QCheckBox()
+        notes_edit = QLineEdit()
+        
+        layout.addRow("Name:", name_edit)
+        layout.addRow("Date of Birth:", dob_edit)
+        layout.addRow("Gender:", gender_edit)
+        layout.addRow("Wears Glasses:", glasses_check)
+        layout.addRow("Notes:", notes_edit)
+        
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            patient = self.patient_manager.create(
+                name=name_edit.text(),
+                date_of_birth=dob_edit.text(),
+                gender=gender_edit.text(),
+                wears_glasses=glasses_check.isChecked(),
+                notes=notes_edit.text()
+            )
+            self._refresh_patient_list()
+            # Select new patient
+            for i in range(self.patient_combo.count()):
+                if self.patient_combo.itemData(i) == patient.id:
+                    self.patient_combo.setCurrentIndex(i)
+                    break
+
+    def _edit_patient(self):
+        """Edit current patient."""
+        if not self.current_patient:
+            QMessageBox.warning(self, "No Patient", "Please select a patient first.")
+            return
+        
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QCheckBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit Patient")
+        dialog.setMinimumWidth(300)
+        layout = QFormLayout(dialog)
+        
+        name_edit = QLineEdit(self.current_patient.name)
+        dob_edit = QLineEdit(self.current_patient.date_of_birth)
+        gender_edit = QLineEdit(self.current_patient.gender)
+        glasses_check = QCheckBox()
+        glasses_check.setChecked(self.current_patient.wears_glasses)
+        notes_edit = QLineEdit(self.current_patient.notes)
+        
+        layout.addRow("Name:", name_edit)
+        layout.addRow("Date of Birth:", dob_edit)
+        layout.addRow("Gender:", gender_edit)
+        layout.addRow("Wears Glasses:", glasses_check)
+        layout.addRow("Notes:", notes_edit)
+        
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.patient_manager.update(
+                self.current_patient.id,
+                name=name_edit.text(),
+                date_of_birth=dob_edit.text(),
+                gender=gender_edit.text(),
+                wears_glasses=glasses_check.isChecked(),
+                notes=notes_edit.text()
+            )
+            self._refresh_patient_list()
 
     def _create_calibration_group(self) -> QGroupBox:
         """Create calibration controls group."""
