@@ -136,15 +136,19 @@ class MainWindow(QMainWindow):
         group = QGroupBox("Status")
         layout = QVBoxLayout(group)
 
-        self.face_status = QLabel("Face: Not Detected")
+        self.face_status = QLabel("👤 Face: Not Detected")
         self.face_status.setStyleSheet("color: #ff6b6b;")
         layout.addWidget(self.face_status)
 
-        self.calibration_status = QLabel("Calibration: Not Done")
+        self.calibration_status = QLabel("🎯 Calibration: Not Done")
         self.calibration_status.setStyleSheet("color: #ffd93d;")
         layout.addWidget(self.calibration_status)
 
-        self.head_pose_label = QLabel("Head Pose: --")
+        self.tracking_status = QLabel("👁️ Tracking: Inactive")
+        self.tracking_status.setStyleSheet("color: #636e72;")
+        layout.addWidget(self.tracking_status)
+
+        self.head_pose_label = QLabel("📐 Head Pose: --")
         layout.addWidget(self.head_pose_label)
 
         return group
@@ -534,14 +538,18 @@ class MainWindow(QMainWindow):
         # Update status including FPS
         actual_fps = self.camera_thread.get_actual_fps()
         if eye_data.face_detected:
-            self.face_status.setText(f"Face: ✓ Detected ({actual_fps:.1f} FPS)")
+            self.face_status.setText(f"👤 Face: ✓ Detected ({actual_fps:.1f} FPS)")
             self.face_status.setStyleSheet("color: #00b894;")
+            self.tracking_status.setText("👁️ Tracking: Active")
+            self.tracking_status.setStyleSheet("color: #00b894;")
         else:
-            self.face_status.setText(f"Face: ✗ Not Detected ({actual_fps:.1f} FPS)")
+            self.face_status.setText(f"👤 Face: ✗ Not Detected ({actual_fps:.1f} FPS)")
             self.face_status.setStyleSheet("color: #ff6b6b;")
+            self.tracking_status.setText("👁️ Tracking: No Face")
+            self.tracking_status.setStyleSheet("color: #ff6b6b;")
 
         self.head_pose_label.setText(
-            f"Head: P={eye_data.head_pitch:.1f}° Y={eye_data.head_yaw:.1f}° R={eye_data.head_roll:.1f}°"
+            f"📐 Head: P={eye_data.head_pitch:.1f}° Y={eye_data.head_yaw:.1f}° R={eye_data.head_roll:.1f}°"
         )
 
         # Forward to active widget with capture timestamp
@@ -560,7 +568,8 @@ class MainWindow(QMainWindow):
         """Handle calibration completion."""
         self.calibration_widget.showNormal()
         self.stack.setCurrentIndex(0)
-        self.calibration_status.setText("Calibration: ✓ Done")
+        self.calibration_status.setText("🎯 Calibration: ✓ Done")
+        self.calibration_status.setStyleSheet("color: #00b894;")
         self.calibration_status.setStyleSheet("color: #00b894;")
 
     def _save_profile(self):
@@ -585,7 +594,8 @@ class MainWindow(QMainWindow):
         )
         if filepath:
             if self.gaze_estimator.load_profile(filepath):
-                self.calibration_status.setText("Calibration: ✓ Loaded")
+                self.calibration_status.setText("🎯 Calibration: ✓ Loaded")
+                self.calibration_status.setStyleSheet("color: #00b894;")
                 self.calibration_status.setStyleSheet("color: #00b894;")
                 QMessageBox.information(self, "Loaded", "Profile loaded successfully.")
             else:
