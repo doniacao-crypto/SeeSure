@@ -25,6 +25,7 @@ from smooth_pursuit_test import (
     TestConfig, TargetPattern, TestResult, generate_report
 )
 from session_history import SessionHistoryManager, SessionSummary
+from visualization import TrajectoryVisualizer, generate_trajectory_from_result
 
 # Import UI widgets from separate modules
 from widgets import CameraThread, CalibrationWidget, TestWidget
@@ -330,6 +331,21 @@ class MainWindow(QMainWindow):
         """)
         self.export_csv_btn.clicked.connect(self._export_csv)
         btn_layout.addWidget(self.export_csv_btn)
+
+        self.trajectory_btn = QPushButton("📈 View Trajectory")
+        self.trajectory_btn.setToolTip("View gaze trajectory plots")
+        self.trajectory_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #8e44ad; }
+        """)
+        self.trajectory_btn.clicked.connect(self._show_trajectory)
+        btn_layout.addWidget(self.trajectory_btn)
 
         layout.addLayout(btn_layout)
         return widget
@@ -687,6 +703,103 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             QMessageBox.warning(self, "Export Failed", f"Failed to export CSV: {e}")
+
+    def _show_trajectory(self):
+        """Show trajectory visualization dialog."""
+        if self._last_result is None:
+            QMessageBox.warning(self, "No Data", "No test results to visualize.")
+            return
+
+        try:
+            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QTabWidget
+            from PyQt6.QtGui import QPixmap
+            
+            # Generate trajectory plots
+            visualizer = TrajectoryVisualizer()
+            xy_fig, time_fig = generate_trajectory_from_result(self._last_result, visualizer)
+            
+            # Create dialog
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Trajectory Visualization")
+            dialog.setMinimumSize(800, 600)
+            layout = QVBoxLayout(dialog)
+            
+            # Tab widget for different views
+            tabs = QTabWidget()
+            
+            # XY Trajectory tab
+            xy_widget = QWidget()
+            xy_layout = QVBoxLayout(xy_widget)
+            xy_label = QLabel()
+            xy_img = visualizer.figure_to_image(xy_fig)
+            xy_pixmap = QPixmap()
+            xy_pixmap.loadFromData(xy_img)
+            xy_label.setPixmap(xy_pixmap.scaled(750, 500, Qt.AspectRatioMode.KeepAspectRatio))
+            xy_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            xy_layout.addWidget(xy_label)
+            tabs.addTab(xy_widget, "XY Trajectory")
+            
+            # Time Series tab
+            time_widget = QWidget()
+            time_layout = QVBoxLayout(time_widget)
+            time_label = QLabel()
+            time_img = visualizer.figure_to_image(time_fig)
+            time_pixmap = QPixmap()
+            time_pixmap.loadFromData(time_img)
+            time_label.setPixmap(time_pixmap.scaled(750, 500, Qt.AspectRatioMode.KeepAspectRatio))
+            time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            time_layout.addWidget(time_label)
+            tabs.addTab(time_widget, "Position vs Time")
+            
+            layout.addWidget(tabs)
+            
+            # Export button
+            btn_layout = QHBoxLayout()
+            export_btn = QPushButton("💾 Save Images")
+            export_btn.clicked.connect(lambda: self._export_trajectory_images())
+            btn_layout.addWidget(export_btn)
+            
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(dialog.close)
+            btn_layout.addWidget(close_btn)
+            layout.addLayout(btn_layout)
+            
+            dialog.exec()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Visualization Error", f"Failed to generate trajectory: {e}")
+
+    def _export_trajectory_images(self):
+        """Export trajectory plots to image files."""
+        if self._last_result is None:
+            return
+        
+        try:
+            from pathlib import Path
+            import time
+            
+            visualizer = TrajectoryVisualizer()
+            xy_fig, time_fig = generate_trajectory_from_result(self._last_result, visualizer)
+            
+            # Save to results directory
+            results_dir = Path("results")
+            results_dir.mkdir(exist_ok=True)
+            
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            pattern = self._last_result.pattern.value
+            
+            xy_path = results_dir / f"trajectory_xy_{pattern}_{timestamp}.png"
+            time_path = results_dir / f"trajectory_time_{pattern}_{timestamp}.png"
+            
+            visualizer.save_figure(xy_fig, str(xy_path))
+            visualizer.save_figure(time_fig, str(time_path))
+            
+            QMessageBox.information(
+                self, "Export Successful",
+                f"Trajectory images saved:\n{xy_path}\n{time_path}"
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", f"Failed to save images: {e}")
 
     def closeEvent(self, event):
         """Clean up on close."""
