@@ -163,7 +163,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Pattern:"))
         self.pattern_combo = QComboBox()
         self.pattern_combo.addItems([
-            "Horizontal", "Vertical", "Circular", "Figure-8", "Random Points"
+            "Horizontal", "Vertical", "Circular", "Figure-8", "Random Points", "Fixation"
         ])
         layout.addWidget(self.pattern_combo)
 
@@ -437,7 +437,8 @@ class MainWindow(QMainWindow):
             TargetPattern.VERTICAL,
             TargetPattern.CIRCULAR,
             TargetPattern.FIGURE_EIGHT,
-            TargetPattern.RANDOM_POINTS
+            TargetPattern.RANDOM_POINTS,
+            TargetPattern.FIXATION
         ]
         pattern = patterns[self.pattern_combo.currentIndex()]
 

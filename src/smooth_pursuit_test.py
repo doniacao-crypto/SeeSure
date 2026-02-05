@@ -25,6 +25,7 @@ class TargetPattern(Enum):
     CIRCULAR = "circular"          # Circular motion
     FIGURE_EIGHT = "figure_eight"  # Figure-8 pattern
     RANDOM_POINTS = "random"       # Jump between random points (saccade test)
+    FIXATION = "fixation"          # Stationary target for fixation stability
 
 
 @dataclass
@@ -470,6 +471,10 @@ class SmoothPursuitTest:
                 return self._random_points[self._current_point_index]
             else:
                 return (center_x, center_y)
+
+        elif self.config.pattern == TargetPattern.FIXATION:
+            # Stationary target at center for fixation stability test
+            return (center_x, center_y)
 
         return (center_x, center_y)
 
