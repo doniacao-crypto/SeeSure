@@ -81,13 +81,24 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v4
+      
+      # Node.js security audit
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
       - run: npm ci
-      - run: npm audit --audit-level=high
-        continue-on-error: true
+      - name: NPM Security Audit
+        run: npm audit --audit-level=high
+      
+      # Python security audit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Python Security Audit
+        run: pip-audit -r requirements.txt --strict
 
   build:
     name: Build
