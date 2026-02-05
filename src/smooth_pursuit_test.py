@@ -516,6 +516,25 @@ class SmoothPursuitTest:
         self.current_result.frames.append(frame)
 
 
+def _progress_bar(value: float, max_val: float = 100, width: int = 20, 
+                   good_threshold: float = 80, warn_threshold: float = 60) -> str:
+    """Generate a visual progress bar with rating."""
+    ratio = min(value / max_val, 1.0)
+    filled = int(ratio * width)
+    empty = width - filled
+    bar = "█" * filled + "░" * empty
+    
+    # Rating based on thresholds
+    if value >= good_threshold:
+        rating = "✓"
+    elif value >= warn_threshold:
+        rating = "~"
+    else:
+        rating = "✗"
+    
+    return f"[{bar}] {rating}"
+
+
 def generate_report(result: TestResult, include_clinical: bool = True) -> str:
     """
     Generate a text report from test results.
@@ -528,89 +547,104 @@ def generate_report(result: TestResult, include_clinical: bool = True) -> str:
         Formatted report string
     """
     report = []
-    report.append("=" * 60)
-    report.append("EYE MOVEMENT ASSESSMENT REPORT")
-    report.append("=" * 60)
+    report.append("╔" + "═" * 58 + "╗")
+    report.append("║" + " EYE MOVEMENT ASSESSMENT REPORT ".center(58) + "║")
+    report.append("╚" + "═" * 58 + "╝")
     report.append("")
-    report.append(f"Test Pattern: {result.pattern.value}")
-    report.append(f"Duration: {result.duration:.1f} seconds")
-    report.append(f"Total Frames: {len(result.frames)}")
+    report.append(f"  📋 Test Pattern: {result.pattern.value}")
+    report.append(f"  ⏱️  Duration: {result.duration:.1f} seconds")
+    report.append(f"  📊 Total Frames: {len(result.frames)}")
     report.append("")
-    report.append("-" * 60)
-    report.append("METRICS")
-    report.append("-" * 60)
-    report.append(f"Tracking Success Rate: {result.tracking_ratio * 100:.1f}%")
-    report.append(f"Average Distance from Target: {result.avg_distance_px:.1f} px")
-    report.append(f"Accuracy Score: {result.accuracy_score:.1f}/100")
-    report.append(f"Smoothness Score: {result.smooth_score:.1f}/100")
+    report.append("─" * 60)
+    report.append("📈 PERFORMANCE METRICS")
+    report.append("─" * 60)
+    
+    # Visual metrics with progress bars
+    tracking_pct = result.tracking_ratio * 100
+    report.append(f"  Tracking Rate:  {_progress_bar(tracking_pct)} {tracking_pct:.1f}%")
+    report.append(f"  Accuracy:       {_progress_bar(result.accuracy_score)} {result.accuracy_score:.1f}/100")
+    report.append(f"  Smoothness:     {_progress_bar(result.smooth_score, good_threshold=70, warn_threshold=50)} {result.smooth_score:.1f}/100")
+    report.append(f"  Avg Distance:   {result.avg_distance_px:.1f} px from target")
 
     # Clinical metrics section
     if include_clinical and result.clinical_metrics is not None:
         report.append("")
-        report.append("-" * 60)
-        report.append("CLINICAL METRICS")
-        report.append("-" * 60)
-        report.append(f"Pursuit Gain: {result.pursuit_gain:.2f}")
-        report.append(f"  (Normal range: 0.80-1.00)")
-        report.append(f"Tracking Accuracy: {result.accuracy_degrees:.2f}° visual angle")
-        report.append(f"  (Normal: <2°, Clinical concern: >3°)")
-        report.append(f"Smoothness Index: {result.smoothness:.2f}")
-        report.append(f"  (Normal: >0.70)")
-        report.append(f"Catch-up Saccades: {result.catch_up_saccade_count}")
-        report.append(f"  (Fewer is better - indicates smoother pursuit)")
+        report.append("─" * 60)
+        report.append("🏥 CLINICAL METRICS")
+        report.append("─" * 60)
+        
+        # Pursuit gain (0.8-1.0 is normal, shown as 80-100%)
+        gain_pct = result.pursuit_gain * 100
+        gain_bar = _progress_bar(gain_pct, good_threshold=80, warn_threshold=70)
+        report.append(f"  Pursuit Gain:   {gain_bar} {result.pursuit_gain:.2f}")
+        report.append(f"                  (Normal: 0.80-1.00)")
+        
+        # Accuracy (lower is better, invert for display)
+        acc_score = max(0, 100 - result.accuracy_degrees * 25)  # 0°=100, 4°=0
+        acc_bar = _progress_bar(acc_score, good_threshold=50, warn_threshold=25)
+        report.append(f"  Accuracy:       {acc_bar} {result.accuracy_degrees:.2f}°")
+        report.append(f"                  (Normal: <2°)")
+        
+        # Smoothness (higher is better)
+        smooth_pct = result.smoothness * 100
+        smooth_bar = _progress_bar(smooth_pct, good_threshold=70, warn_threshold=50)
+        report.append(f"  Smoothness:     {smooth_bar} {result.smoothness:.2f}")
+        report.append(f"                  (Normal: >0.70)")
+        
+        report.append(f"  Saccades:       {result.catch_up_saccade_count} catch-up saccades")
 
     report.append("")
-    report.append("-" * 60)
-    report.append("INTERPRETATION")
-    report.append("-" * 60)
+    report.append("─" * 60)
+    report.append("💡 INTERPRETATION")
+    report.append("─" * 60)
 
     # Clinical interpretation based on pursuit gain
     if result.clinical_metrics is not None:
         if result.pursuit_gain >= 0.8:
-            gain_interp = "Pursuit gain NORMAL (≥0.8)"
+            gain_interp = "✅ Pursuit gain NORMAL (≥0.8)"
         elif result.pursuit_gain >= 0.7:
-            gain_interp = "Pursuit gain BORDERLINE (0.7-0.8) - monitor"
+            gain_interp = "⚠️ Pursuit gain BORDERLINE (0.7-0.8) - monitor"
         else:
-            gain_interp = "Pursuit gain ABNORMAL (<0.7) - recommend evaluation"
-        report.append(f"• {gain_interp}")
+            gain_interp = "❌ Pursuit gain ABNORMAL (<0.7) - recommend evaluation"
+        report.append(f"  {gain_interp}")
 
         if result.accuracy_degrees <= 2.0:
-            acc_interp = "Tracking accuracy NORMAL (≤2°)"
+            acc_interp = "✅ Tracking accuracy NORMAL (≤2°)"
         elif result.accuracy_degrees <= 3.0:
-            acc_interp = "Tracking accuracy BORDERLINE (2-3°)"
+            acc_interp = "⚠️ Tracking accuracy BORDERLINE (2-3°)"
         else:
-            acc_interp = "Tracking accuracy ABNORMAL (>3°) - recommend evaluation"
-        report.append(f"• {acc_interp}")
+            acc_interp = "❌ Tracking accuracy ABNORMAL (>3°) - recommend evaluation"
+        report.append(f"  {acc_interp}")
     else:
         # Fallback to legacy interpretation
         if result.accuracy_score >= 80:
-            accuracy_interp = "Excellent tracking accuracy"
+            accuracy_interp = "✅ Excellent tracking accuracy"
         elif result.accuracy_score >= 60:
-            accuracy_interp = "Good tracking accuracy"
+            accuracy_interp = "✅ Good tracking accuracy"
         elif result.accuracy_score >= 40:
-            accuracy_interp = "Moderate tracking accuracy - may indicate difficulties"
+            accuracy_interp = "⚠️ Moderate tracking accuracy - may indicate difficulties"
         else:
-            accuracy_interp = "Poor tracking accuracy - recommend evaluation"
-        report.append(f"• {accuracy_interp}")
+            accuracy_interp = "❌ Poor tracking accuracy - recommend evaluation"
+        report.append(f"  {accuracy_interp}")
 
     if result.smooth_score >= 70:
-        smooth_interp = "Smooth eye movements"
+        smooth_interp = "✅ Smooth eye movements"
     elif result.smooth_score >= 50:
-        smooth_interp = "Mostly smooth with some jerkiness"
+        smooth_interp = "⚠️ Mostly smooth with some jerkiness"
     else:
-        smooth_interp = "Jerky eye movements detected - may indicate oculomotor issues"
-    report.append(f"• {smooth_interp}")
+        smooth_interp = "❌ Jerky eye movements detected - may indicate oculomotor issues"
+    report.append(f"  {smooth_interp}")
 
     if result.tracking_ratio < 0.7:
-        tracking_interp = "Note: Low tracking rate may affect reliability"
+        tracking_interp = "⚠️ Low tracking rate may affect reliability"
     else:
-        tracking_interp = "Data quality: Good"
-    report.append(f"• {tracking_interp}")
+        tracking_interp = "✅ Data quality: Good"
+    report.append(f"  {tracking_interp}")
 
     report.append("")
-    report.append("=" * 60)
-    report.append("DISCLAIMER: This is a screening tool only.")
-    report.append("Consult an eye care professional for diagnosis.")
-    report.append("=" * 60)
+    report.append("─" * 60)
+    report.append("⚕️  DISCLAIMER: This is a screening tool only.")
+    report.append("   Consult an eye care professional for diagnosis.")
+    report.append("─" * 60)
 
     return "\n".join(report)
