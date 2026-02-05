@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QSpinBox, QDoubleSpinBox
 )
 from PyQt6.QtCore import Qt, QTimer, QSize
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QFont
 
 from eye_tracker import EyeTracker, EyeData
 from gaze_estimator import GazeEstimator
@@ -58,42 +58,80 @@ class MainWindow(QMainWindow):
         """Set up the user interface."""
         central = QWidget()
         self.setCentralWidget(central)
-
         main_layout = QHBoxLayout(central)
 
         # Left panel - camera preview and controls
-        left_panel = QFrame()
-        left_panel.setMaximumWidth(400)
-        left_panel.setStyleSheet("QFrame { background-color: #2d2d44; border-radius: 10px; }")
-        left_layout = QVBoxLayout(left_panel)
+        left_panel = self._create_left_panel()
+        main_layout.addWidget(left_panel)
+
+        # Right panel - stacked views
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._create_home_view())
+        
+        # Calibration and test views
+        self.calibration_widget = CalibrationWidget(self.gaze_estimator)
+        self.stack.addWidget(self.calibration_widget)
+        
+        self.test_widget = TestWidget(self.gaze_estimator)
+        self.stack.addWidget(self.test_widget)
+        
+        # Results view
+        self.stack.addWidget(self._create_results_view())
+        
+        # Initialize last result storage
+        self._last_result: Optional[TestResult] = None
+        
+        main_layout.addWidget(self.stack)
+        self._apply_theme()
+
+    def _create_left_panel(self) -> QFrame:
+        """Create the left control panel with camera preview and controls."""
+        panel = QFrame()
+        panel.setMaximumWidth(400)
+        panel.setStyleSheet("QFrame { background-color: #2d2d44; border-radius: 10px; }")
+        layout = QVBoxLayout(panel)
 
         # Camera preview
         self.camera_label = QLabel("Camera Preview")
         self.camera_label.setFixedSize(360, 270)
         self.camera_label.setStyleSheet("background-color: #1a1a2e; border-radius: 5px;")
         self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        left_layout.addWidget(self.camera_label)
+        layout.addWidget(self.camera_label)
 
         # Status indicators
-        status_group = QGroupBox("Status")
-        status_layout = QVBoxLayout(status_group)
+        layout.addWidget(self._create_status_group())
+        
+        # Calibration controls
+        layout.addWidget(self._create_calibration_group())
+        
+        # Test configuration
+        layout.addWidget(self._create_test_config_group())
+        
+        layout.addStretch()
+        return panel
+
+    def _create_status_group(self) -> QGroupBox:
+        """Create status indicators group."""
+        group = QGroupBox("Status")
+        layout = QVBoxLayout(group)
 
         self.face_status = QLabel("Face: Not Detected")
         self.face_status.setStyleSheet("color: #ff6b6b;")
-        status_layout.addWidget(self.face_status)
+        layout.addWidget(self.face_status)
 
         self.calibration_status = QLabel("Calibration: Not Done")
         self.calibration_status.setStyleSheet("color: #ffd93d;")
-        status_layout.addWidget(self.calibration_status)
+        layout.addWidget(self.calibration_status)
 
         self.head_pose_label = QLabel("Head Pose: --")
-        status_layout.addWidget(self.head_pose_label)
+        layout.addWidget(self.head_pose_label)
 
-        left_layout.addWidget(status_group)
+        return group
 
-        # Calibration controls
-        calib_group = QGroupBox("Calibration")
-        calib_layout = QVBoxLayout(calib_group)
+    def _create_calibration_group(self) -> QGroupBox:
+        """Create calibration controls group."""
+        group = QGroupBox("Calibration")
+        layout = QVBoxLayout(group)
 
         self.calibrate_btn = QPushButton("Start Calibration")
         self.calibrate_btn.setStyleSheet("""
@@ -106,39 +144,40 @@ class MainWindow(QMainWindow):
             }
             QPushButton:hover { background-color: #5f4dd0; }
         """)
-        calib_layout.addWidget(self.calibrate_btn)
+        layout.addWidget(self.calibrate_btn)
 
-        calib_btn_layout = QHBoxLayout()
+        btn_layout = QHBoxLayout()
         self.save_profile_btn = QPushButton("Save Profile")
         self.load_profile_btn = QPushButton("Load Profile")
-        calib_btn_layout.addWidget(self.save_profile_btn)
-        calib_btn_layout.addWidget(self.load_profile_btn)
-        calib_layout.addLayout(calib_btn_layout)
+        btn_layout.addWidget(self.save_profile_btn)
+        btn_layout.addWidget(self.load_profile_btn)
+        layout.addLayout(btn_layout)
 
-        left_layout.addWidget(calib_group)
+        return group
 
-        # Test configuration
-        test_group = QGroupBox("Test Configuration")
-        test_layout = QVBoxLayout(test_group)
+    def _create_test_config_group(self) -> QGroupBox:
+        """Create test configuration group."""
+        group = QGroupBox("Test Configuration")
+        layout = QVBoxLayout(group)
 
-        test_layout.addWidget(QLabel("Pattern:"))
+        layout.addWidget(QLabel("Pattern:"))
         self.pattern_combo = QComboBox()
         self.pattern_combo.addItems([
             "Horizontal", "Vertical", "Circular", "Figure-8", "Random Points"
         ])
-        test_layout.addWidget(self.pattern_combo)
+        layout.addWidget(self.pattern_combo)
 
-        test_layout.addWidget(QLabel("Duration (seconds):"))
+        layout.addWidget(QLabel("Duration (seconds):"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(5, 60)
         self.duration_spin.setValue(10)
-        test_layout.addWidget(self.duration_spin)
+        layout.addWidget(self.duration_spin)
 
-        test_layout.addWidget(QLabel("Speed:"))
+        layout.addWidget(QLabel("Speed:"))
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setRange(1, 10)
         self.speed_slider.setValue(5)
-        test_layout.addWidget(self.speed_slider)
+        layout.addWidget(self.speed_slider)
 
         self.start_test_btn = QPushButton("Start Test")
         self.start_test_btn.setStyleSheet("""
@@ -151,24 +190,20 @@ class MainWindow(QMainWindow):
             }
             QPushButton:hover { background-color: #00a884; }
         """)
-        test_layout.addWidget(self.start_test_btn)
+        layout.addWidget(self.start_test_btn)
 
-        left_layout.addWidget(test_group)
-        left_layout.addStretch()
+        return group
 
-        main_layout.addWidget(left_panel)
-
-        # Right panel - main view (stacked widget)
-        self.stack = QStackedWidget()
-
-        # Home view
-        home_widget = QWidget()
-        home_layout = QVBoxLayout(home_widget)
-        home_label = QLabel("Eye Movement Assessment System")
-        home_label.setFont(QFont("Arial", 28, QFont.Weight.Bold))
-        home_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        home_label.setStyleSheet("color: #74b9ff;")
-        home_layout.addWidget(home_label)
+    def _create_home_view(self) -> QWidget:
+        """Create the home/welcome view."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        title = QLabel("Eye Movement Assessment System")
+        title.setFont(QFont("Arial", 28, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("color: #74b9ff;")
+        layout.addWidget(title)
 
         instructions = QLabel(
             "1. Ensure good lighting and face the camera\n"
@@ -180,25 +215,19 @@ class MainWindow(QMainWindow):
         instructions.setFont(QFont("Arial", 14))
         instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
         instructions.setStyleSheet("color: #b2bec3;")
-        home_layout.addWidget(instructions)
+        layout.addWidget(instructions)
 
-        self.stack.addWidget(home_widget)
+        return widget
 
-        # Calibration view
-        self.calibration_widget = CalibrationWidget(self.gaze_estimator)
-        self.stack.addWidget(self.calibration_widget)
-
-        # Test view
-        self.test_widget = TestWidget(self.gaze_estimator)
-        self.stack.addWidget(self.test_widget)
-
-        # Results view
-        results_widget = QWidget()
-        results_layout = QVBoxLayout(results_widget)
-        results_label = QLabel("Test Results")
-        results_label.setFont(QFont("Arial", 20, QFont.Weight.Bold))
-        results_label.setStyleSheet("color: #74b9ff;")
-        results_layout.addWidget(results_label)
+    def _create_results_view(self) -> QWidget:
+        """Create the results display view."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        title = QLabel("Test Results")
+        title.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        title.setStyleSheet("color: #74b9ff;")
+        layout.addWidget(title)
 
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
@@ -212,14 +241,14 @@ class MainWindow(QMainWindow):
                 padding: 10px;
             }
         """)
-        results_layout.addWidget(self.results_text)
+        layout.addWidget(self.results_text)
 
         # Button row
-        results_btn_layout = QHBoxLayout()
-
+        btn_layout = QHBoxLayout()
+        
         self.back_btn = QPushButton("Back to Home")
         self.back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        results_btn_layout.addWidget(self.back_btn)
+        btn_layout.addWidget(self.back_btn)
 
         self.export_full_btn = QPushButton("Export Full Data")
         self.export_full_btn.setStyleSheet("""
@@ -233,18 +262,13 @@ class MainWindow(QMainWindow):
             QPushButton:hover { background-color: #00a884; }
         """)
         self.export_full_btn.clicked.connect(self._export_full_data)
-        results_btn_layout.addWidget(self.export_full_btn)
+        btn_layout.addWidget(self.export_full_btn)
 
-        results_layout.addLayout(results_btn_layout)
+        layout.addLayout(btn_layout)
+        return widget
 
-        self.stack.addWidget(results_widget)
-
-        # Initialize last result storage
-        self._last_result: Optional[TestResult] = None
-
-        main_layout.addWidget(self.stack)
-
-        # Apply dark theme
+    def _apply_theme(self):
+        """Apply the dark theme stylesheet."""
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
             QGroupBox {
