@@ -13,6 +13,14 @@ from scipy import signal
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
 
+from constants import (
+    SACCADE_VELOCITY_THRESHOLD,
+    MICROSACCADE_VELOCITY_THRESHOLD,
+    MIN_SACCADE_DURATION_MS,
+    BCEA_PROBABILITY,
+    MICROSACCADE_MAX_AMPLITUDE_DEG
+)
+
 
 @dataclass
 class ScreenConfig:
@@ -112,9 +120,9 @@ class MetricsCalculator:
             screen_config: Screen configuration for visual angle conversion
         """
         self.screen = screen_config
-        self.saccade_velocity_threshold = 30.0  # deg/s
-        self.microsaccade_velocity_threshold = 15.0  # deg/s
-        self.min_saccade_duration_ms = 20.0  # Minimum saccade duration
+        self.saccade_velocity_threshold = SACCADE_VELOCITY_THRESHOLD
+        self.microsaccade_velocity_threshold = MICROSACCADE_VELOCITY_THRESHOLD
+        self.min_saccade_duration_ms = MIN_SACCADE_DURATION_MS
 
     def calculate_pursuit_gain(self,
                                target_positions: np.ndarray,
@@ -284,7 +292,7 @@ class MetricsCalculator:
 
     def calculate_bcea(self,
                        gaze_positions: np.ndarray,
-                       probability: float = 0.68) -> float:
+                       probability: float = BCEA_PROBABILITY) -> float:
         """
         Calculate Bivariate Contour Ellipse Area.
 
@@ -341,7 +349,7 @@ class MetricsCalculator:
     def detect_microsaccades(self,
                              gaze_positions: np.ndarray,
                              timestamps: np.ndarray,
-                             max_amplitude_deg: float = 1.0) -> List[SaccadeEvent]:
+                             max_amplitude_deg: float = MICROSACCADE_MAX_AMPLITUDE_DEG) -> List[SaccadeEvent]:
         """
         Detect microsaccades during fixation using velocity threshold.
 
@@ -375,7 +383,7 @@ class MetricsCalculator:
     def calculate_fixation_metrics(self,
                                    gaze_positions: np.ndarray,
                                    timestamps: np.ndarray,
-                                   bcea_probability: float = 0.68) -> FixationMetrics:
+                                   bcea_probability: float = BCEA_PROBABILITY) -> FixationMetrics:
         """
         Calculate comprehensive fixation stability metrics.
 
