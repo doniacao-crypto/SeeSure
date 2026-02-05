@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, List
 import urllib.request
 import os
+import hashlib
 
 
 @dataclass
@@ -84,9 +85,10 @@ class EyeTracker:
         (150.0, -150.0, -125.0)   # Right mouth corner
     ], dtype=np.float64)
 
-    # Model download URL
+    # Model download URL and integrity verification
     MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
     MODEL_PATH = os.path.join(os.path.dirname(__file__), "face_landmarker.task")
+    MODEL_SHA256 = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
 
     def __init__(self, max_faces: int = 1, min_detection_confidence: float = 0.5,
                  min_tracking_confidence: float = 0.5):
@@ -124,11 +126,38 @@ class EyeTracker:
         self._ear_threshold = self.EAR_THRESHOLD
 
     def _ensure_model_exists(self):
-        """Download the model file if it doesn't exist."""
-        if not os.path.exists(self.MODEL_PATH):
+        """Download the model file if it doesn't exist and verify integrity."""
+        need_download = not os.path.exists(self.MODEL_PATH)
+        
+        # Verify existing model integrity
+        if not need_download:
+            if not self._verify_model_hash():
+                print(f"Model integrity check failed. Re-downloading...")
+                os.remove(self.MODEL_PATH)
+                need_download = True
+        
+        if need_download:
             print(f"Downloading face landmarker model to {self.MODEL_PATH}...")
             urllib.request.urlretrieve(self.MODEL_URL, self.MODEL_PATH)
             print("Model downloaded successfully.")
+            
+            # Verify downloaded model
+            if not self._verify_model_hash():
+                os.remove(self.MODEL_PATH)
+                raise RuntimeError(
+                    f"Downloaded model integrity verification failed. "
+                    f"Expected SHA256: {self.MODEL_SHA256}"
+                )
+            print("Model integrity verified.")
+    
+    def _verify_model_hash(self) -> bool:
+        """Verify the SHA256 hash of the model file."""
+        sha256_hash = hashlib.sha256()
+        with open(self.MODEL_PATH, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha256_hash.update(chunk)
+        actual_hash = sha256_hash.hexdigest()
+        return actual_hash == self.MODEL_SHA256
 
     def _init_camera_matrix(self, frame_width: int, frame_height: int):
         """Initialize camera matrix based on frame dimensions."""
