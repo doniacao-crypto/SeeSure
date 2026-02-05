@@ -97,11 +97,17 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(panel)
 
         # Camera preview
-        self.camera_label = QLabel("Camera Preview")
+        self.camera_label = QLabel("📷 Initializing camera...")
         self.camera_label.setFixedSize(360, 270)
-        self.camera_label.setStyleSheet("background-color: #1a1a2e; border-radius: 5px;")
+        self.camera_label.setStyleSheet("""
+            background-color: #1a1a2e;
+            border-radius: 5px;
+            color: #74b9ff;
+            font-size: 14px;
+        """)
         self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.camera_label)
+        self._camera_initialized = False
 
         # Status indicators
         layout.addWidget(self._create_status_group())
@@ -520,6 +526,10 @@ class MainWindow(QMainWindow):
             capture_time: Timestamp when frame was captured
         """
         self.current_eye_data = eye_data
+
+        # Mark camera as initialized on first frame
+        if not self._camera_initialized:
+            self._camera_initialized = True
 
         # Update camera preview with debug visualization
         debug_frame = self.eye_tracker.draw_debug(frame, eye_data)
