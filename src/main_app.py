@@ -26,9 +26,10 @@ from smooth_pursuit_test import (
 )
 from session_history import SessionHistoryManager, SessionSummary
 from visualization import TrajectoryVisualizer, generate_trajectory_from_result
+from saccade_test import SaccadeTest, SaccadeTestConfig, SaccadeTestType, SaccadeTestResult, generate_saccade_report
 
 # Import UI widgets from separate modules
-from widgets import CameraThread, CalibrationWidget, TestWidget
+from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget
 
 
 class MainWindow(QMainWindow):
@@ -77,6 +78,12 @@ class MainWindow(QMainWindow):
         
         self.test_widget = TestWidget(self.gaze_estimator)
         self.stack.addWidget(self.test_widget)
+        
+        # Saccade test widget
+        self.saccade_widget = SaccadeWidget()
+        self.saccade_widget.set_gaze_estimator(self.gaze_estimator)
+        self.saccade_widget.test_complete.connect(self._on_saccade_complete)
+        self.stack.addWidget(self.saccade_widget)
         
         # Results view
         self.stack.addWidget(self._create_results_view())
@@ -198,13 +205,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Pattern:"))
         self.pattern_combo = QComboBox()
         self.pattern_combo.addItems([
-            "Horizontal", "Vertical", "Circular", "Figure-8", "Random Points", "Fixation"
+            "Horizontal", "Vertical", "Circular", "Figure-8", "Random Points", "Fixation",
+            "Pro-Saccade", "Anti-Saccade"
         ])
         self.pattern_combo.setToolTip(
             "Horizontal/Vertical: Smooth pursuit\n"
             "Circular/Figure-8: Complex pursuit\n"
             "Random Points: Saccade testing\n"
-            "Fixation: Stability assessment"
+            "Fixation: Stability assessment\n"
+            "Pro-Saccade: Look toward target\n"
+            "Anti-Saccade: Look away from target"
         )
         layout.addWidget(self.pattern_combo)
 
@@ -413,7 +423,7 @@ class MainWindow(QMainWindow):
     def _show_history(self):
         """Show the history view."""
         self._refresh_history()
-        self.stack.setCurrentIndex(4)  # History view index
+        self.stack.setCurrentIndex(5)  # History view index
 
     def _refresh_history(self):
         """Refresh the history list."""
@@ -454,7 +464,7 @@ class MainWindow(QMainWindow):
                         report += f"{key}: {value}\n"
             
             self.results_text.setText(report)
-            self.stack.setCurrentIndex(3)  # Results view
+            self.stack.setCurrentIndex(4)  # Results view
 
     def _delete_history_session(self):
         """Delete the selected history session."""
@@ -583,6 +593,8 @@ class MainWindow(QMainWindow):
             self.calibration_widget.process_eye_data(eye_data)
         elif self.stack.currentWidget() == self.test_widget:
             self.test_widget.process_eye_data(eye_data, capture_time)
+        elif self.stack.currentWidget() == self.saccade_widget:
+            self.saccade_widget.process_eye_data(eye_data)
 
     def _start_calibration(self):
         """Start calibration process."""
@@ -629,7 +641,17 @@ class MainWindow(QMainWindow):
 
     def _start_test(self):
         """Start the eye movement test."""
-        # Get test configuration
+        pattern_index = self.pattern_combo.currentIndex()
+        
+        # Check if it's a saccade test (indices 6 and 7)
+        if pattern_index == 6:  # Pro-Saccade
+            self._start_saccade_test(SaccadeTestType.PRO_SACCADE)
+            return
+        elif pattern_index == 7:  # Anti-Saccade
+            self._start_saccade_test(SaccadeTestType.ANTI_SACCADE)
+            return
+        
+        # Get test configuration for standard patterns
         patterns = [
             TargetPattern.HORIZONTAL,
             TargetPattern.VERTICAL,
@@ -638,7 +660,7 @@ class MainWindow(QMainWindow):
             TargetPattern.RANDOM_POINTS,
             TargetPattern.FIXATION
         ]
-        pattern = patterns[self.pattern_combo.currentIndex()]
+        pattern = patterns[pattern_index]
 
         config = TestConfig(
             pattern=pattern,
@@ -649,6 +671,22 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.test_widget)
         self.test_widget.showFullScreen()
         self.test_widget.start_test(config)
+    
+    def _start_saccade_test(self, test_type: SaccadeTestType):
+        """Start a saccade test."""
+        config = SaccadeTestConfig(
+            test_type=test_type,
+            num_trials=20,
+            eccentricities_deg=[10.0],  # 10 degrees eccentricity
+            fixation_duration_ms=1000.0,
+            gap_duration_ms=200.0,
+            randomize_direction=True,
+            randomize_timing=True
+        )
+        
+        self.stack.setCurrentWidget(self.saccade_widget)
+        self.saccade_widget.showFullScreen()
+        self.saccade_widget.start_test(config)
 
     def _on_test_complete(self, result: TestResult):
         """Handle test completion."""
@@ -668,7 +706,20 @@ class MainWindow(QMainWindow):
         report = generate_report(result)
         self.results_text.setText(report + save_message)
 
-        self.stack.setCurrentIndex(3)  # Results view
+        self.stack.setCurrentIndex(4)  # Results view (index shifted due to saccade widget)
+
+    def _on_saccade_complete(self, result: SaccadeTestResult):
+        """Handle saccade test completion."""
+        self.saccade_widget.showNormal()
+        
+        # Store result (note: different type than smooth pursuit result)
+        self._last_saccade_result = result
+        
+        # Generate and display report
+        report = generate_saccade_report(result)
+        self.results_text.setText(report)
+        
+        self.stack.setCurrentIndex(4)  # Results view
 
     def _export_full_data(self):
         """Export full test data including all frame-by-frame details."""
