@@ -28,6 +28,7 @@ from session_history import SessionHistoryManager, SessionSummary
 from visualization import TrajectoryVisualizer, generate_trajectory_from_result
 from saccade_test import SaccadeTest, SaccadeTestConfig, SaccadeTestType, SaccadeTestResult, generate_saccade_report
 from validation import ValidationTest, ValidationConfig, ValidationPattern, ValidationResult, generate_validation_report
+from pdf_report import PDFReportGenerator, PatientInfo, ClinicInfo
 
 # Import UI widgets from separate modules
 from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget, ValidationWidget
@@ -379,6 +380,21 @@ class MainWindow(QMainWindow):
         """)
         self.trajectory_btn.clicked.connect(self._show_trajectory)
         btn_layout.addWidget(self.trajectory_btn)
+
+        self.pdf_btn = QPushButton("📄 Export PDF")
+        self.pdf_btn.setToolTip("Generate professional PDF clinical report")
+        self.pdf_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #c0392b; }
+        """)
+        self.pdf_btn.clicked.connect(self._export_pdf)
+        btn_layout.addWidget(self.pdf_btn)
 
         layout.addLayout(btn_layout)
         return widget
@@ -886,6 +902,32 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             QMessageBox.warning(self, "Visualization Error", f"Failed to generate trajectory: {e}")
+
+    def _export_pdf(self):
+        """Export results to PDF clinical report."""
+        pdf_gen = PDFReportGenerator()
+        
+        try:
+            # Determine which result to export
+            if hasattr(self, '_last_result') and self._last_result is not None:
+                pdf_path = pdf_gen.generate_pursuit_report(self._last_result)
+                report_type = "Smooth Pursuit"
+            elif hasattr(self, '_last_saccade_result') and self._last_saccade_result is not None:
+                pdf_path = pdf_gen.generate_saccade_report(self._last_saccade_result)
+                report_type = "Saccade"
+            elif hasattr(self, '_last_validation_result') and self._last_validation_result is not None:
+                pdf_path = pdf_gen.generate_validation_report(self._last_validation_result)
+                report_type = "Validation"
+            else:
+                QMessageBox.warning(self, "No Data", "No test results to export.")
+                return
+            
+            QMessageBox.information(
+                self, "PDF Export Successful",
+                f"{report_type} report saved to:\n{pdf_path}"
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "PDF Export Failed", f"Failed to generate PDF: {e}")
 
     def _export_trajectory_images(self):
         """Export trajectory plots to image files."""
