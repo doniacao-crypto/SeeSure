@@ -173,10 +173,18 @@ class MainWindow(QMainWindow):
         self.duration_spin.setValue(10)
         layout.addWidget(self.duration_spin)
 
-        layout.addWidget(QLabel("Speed:"))
+        speed_row = QHBoxLayout()
+        speed_row.addWidget(QLabel("Speed:"))
+        self.speed_label = QLabel("0.5")
+        self.speed_label.setStyleSheet("color: #74b9ff; font-weight: bold;")
+        speed_row.addWidget(self.speed_label)
+        speed_row.addStretch()
+        layout.addLayout(speed_row)
+        
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setRange(1, 10)
         self.speed_slider.setValue(5)
+        self.speed_slider.valueChanged.connect(self._on_speed_changed)
         layout.addWidget(self.speed_slider)
 
         self.start_test_btn = QPushButton("Start Test")
@@ -331,6 +339,11 @@ class MainWindow(QMainWindow):
         self.start_test_btn.clicked.connect(self._start_test)
         self.calibration_widget.calibration_complete.connect(self._on_calibration_complete)
         self.test_widget.test_complete.connect(self._on_test_complete)
+
+    def _on_speed_changed(self, value: int):
+        """Update speed label when slider changes."""
+        speed = value / 10.0
+        self.speed_label.setText(f"{speed:.1f}")
 
     def _on_frame_ready(self, frame: np.ndarray, eye_data: EyeData, capture_time: float):
         """Handle new camera frame.
