@@ -195,6 +195,72 @@ class TrajectoryVisualizer:
         
         return velocity
     
+    def plot_heatmap(
+        self,
+        gaze_x: List[float],
+        gaze_y: List[float],
+        screen_width: int = 1920,
+        screen_height: int = 1080,
+        bins: int = 50,
+        title: str = "Gaze Heatmap"
+    ) -> Figure:
+        """
+        Create gaze density heatmap.
+        
+        Args:
+            gaze_x: Gaze X positions
+            gaze_y: Gaze Y positions
+            screen_width: Screen width in pixels
+            screen_height: Screen height in pixels
+            bins: Number of bins for histogram
+            title: Plot title
+            
+        Returns:
+            Matplotlib Figure object
+        """
+        fig, ax = plt.subplots(figsize=self.config.figsize, dpi=self.config.dpi)
+        
+        # Create 2D histogram
+        x = np.array(gaze_x)
+        y = np.array(gaze_y)
+        
+        # Create heatmap
+        heatmap, xedges, yedges = np.histogram2d(
+            x, y, bins=bins,
+            range=[[0, screen_width], [0, screen_height]]
+        )
+        
+        # Apply Gaussian smoothing
+        from scipy.ndimage import gaussian_filter
+        heatmap = gaussian_filter(heatmap.T, sigma=2)
+        
+        # Plot
+        extent = [0, screen_width, screen_height, 0]
+        im = ax.imshow(
+            heatmap, extent=extent, origin='upper',
+            cmap='hot', alpha=0.8, aspect='auto'
+        )
+        
+        # Add colorbar
+        cbar = fig.colorbar(im, ax=ax, label='Gaze Density')
+        
+        # Calculate and mark centroid
+        if len(x) > 0:
+            centroid_x = np.mean(x)
+            centroid_y = np.mean(y)
+            ax.scatter([centroid_x], [centroid_y], color='cyan', s=100, 
+                      marker='+', linewidths=2, label='Centroid', zorder=5)
+            ax.legend(loc='upper right')
+        
+        ax.set_xlabel('X Position (pixels)')
+        ax.set_ylabel('Y Position (pixels)')
+        ax.set_title(title)
+        ax.set_xlim(0, screen_width)
+        ax.set_ylim(screen_height, 0)
+        
+        plt.tight_layout()
+        return fig
+
     def figure_to_image(self, fig: Figure) -> bytes:
         """
         Convert matplotlib figure to PNG bytes.

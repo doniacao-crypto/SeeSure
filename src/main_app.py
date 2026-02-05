@@ -1037,6 +1037,23 @@ class MainWindow(QMainWindow):
             time_layout.addWidget(time_label)
             tabs.addTab(time_widget, "Position vs Time")
             
+            # Heatmap tab
+            gaze_x = [f.gaze_x for f in self._last_result.frames if f.gaze_x is not None]
+            gaze_y = [f.gaze_y for f in self._last_result.frames if f.gaze_y is not None]
+            if gaze_x:
+                heat_fig = visualizer.plot_heatmap(gaze_x, gaze_y, 
+                    title=f"Gaze Heatmap - {self._last_result.pattern.value}")
+                heat_widget = QWidget()
+                heat_layout = QVBoxLayout(heat_widget)
+                heat_label = QLabel()
+                heat_img = visualizer.figure_to_image(heat_fig)
+                heat_pixmap = QPixmap()
+                heat_pixmap.loadFromData(heat_img)
+                heat_label.setPixmap(heat_pixmap.scaled(750, 500, Qt.AspectRatioMode.KeepAspectRatio))
+                heat_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                heat_layout.addWidget(heat_label)
+                tabs.addTab(heat_widget, "Heatmap")
+            
             layout.addWidget(tabs)
             
             # Export button
