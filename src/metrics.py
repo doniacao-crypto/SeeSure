@@ -9,6 +9,7 @@ Provides clinical-grade metrics calculation including:
 
 import math
 import numpy as np
+from scipy import signal
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
 
@@ -405,6 +406,54 @@ class MetricsCalculator:
 
         return smoothness
 
+    def calculate_phase_lag(self,
+                            target_positions: np.ndarray,
+                            gaze_positions: np.ndarray,
+                            timestamps: np.ndarray) -> float:
+        """
+        Calculate temporal phase lag between gaze and target using cross-correlation.
+
+        Args:
+            target_positions: Target positions array (N, 2)
+            gaze_positions: Gaze positions array (N, 2)
+            timestamps: Timestamps array (N,)
+
+        Returns:
+            Phase lag in milliseconds (positive = gaze lags behind target)
+        """
+        if len(timestamps) < 10:
+            return 0.0
+
+        # Calculate average sample rate
+        dt = np.mean(np.diff(timestamps))
+        if dt <= 0:
+            return 0.0
+        sample_rate = 1.0 / dt
+
+        # Use x-component for horizontal pursuit (most common)
+        target_x = target_positions[:, 0] - np.mean(target_positions[:, 0])
+        gaze_x = gaze_positions[:, 0] - np.mean(gaze_positions[:, 0])
+
+        # Normalize signals
+        target_norm = target_x / (np.std(target_x) + 1e-8)
+        gaze_norm = gaze_x / (np.std(gaze_x) + 1e-8)
+
+        # Cross-correlation
+        correlation = signal.correlate(gaze_norm, target_norm, mode='full')
+        lags = signal.correlation_lags(len(gaze_norm), len(target_norm), mode='full')
+
+        # Find peak correlation (should be near zero lag for good tracking)
+        peak_idx = np.argmax(correlation)
+        lag_samples = lags[peak_idx]
+
+        # Convert to milliseconds
+        lag_ms = (lag_samples / sample_rate) * 1000.0
+
+        # Clamp to reasonable range (typically -500 to +500 ms)
+        lag_ms = np.clip(lag_ms, -500.0, 500.0)
+
+        return float(lag_ms)
+
     def calculate_pursuit_metrics(self,
                                   target_positions: np.ndarray,
                                   gaze_positions: np.ndarray,
@@ -437,9 +486,8 @@ class MetricsCalculator:
         # In practice, this would be based on face detection success
         tracking_ratio = 1.0
 
-        # Phase lag estimation (simplified - could use cross-correlation)
-        # For now, return 0 as placeholder
-        phase_lag_ms = 0.0
+        # Phase lag estimation using cross-correlation
+        phase_lag_ms = self.calculate_phase_lag(target_positions, gaze_positions, timestamps)
 
         return PursuitMetrics(
             gain=gain,
