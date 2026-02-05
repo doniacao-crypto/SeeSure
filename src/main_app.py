@@ -144,11 +144,14 @@ class MainWindow(QMainWindow):
             }
             QPushButton:hover { background-color: #5f4dd0; }
         """)
+        self.calibrate_btn.setToolTip("Run 9-point calibration to map your eye movements to screen coordinates")
         layout.addWidget(self.calibrate_btn)
 
         btn_layout = QHBoxLayout()
         self.save_profile_btn = QPushButton("Save Profile")
+        self.save_profile_btn.setToolTip("Save calibration to file for later use")
         self.load_profile_btn = QPushButton("Load Profile")
+        self.load_profile_btn.setToolTip("Load a previously saved calibration profile")
         btn_layout.addWidget(self.save_profile_btn)
         btn_layout.addWidget(self.load_profile_btn)
         layout.addLayout(btn_layout)
@@ -165,12 +168,19 @@ class MainWindow(QMainWindow):
         self.pattern_combo.addItems([
             "Horizontal", "Vertical", "Circular", "Figure-8", "Random Points", "Fixation"
         ])
+        self.pattern_combo.setToolTip(
+            "Horizontal/Vertical: Smooth pursuit\n"
+            "Circular/Figure-8: Complex pursuit\n"
+            "Random Points: Saccade testing\n"
+            "Fixation: Stability assessment"
+        )
         layout.addWidget(self.pattern_combo)
 
         layout.addWidget(QLabel("Duration (seconds):"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(5, 60)
         self.duration_spin.setValue(10)
+        self.duration_spin.setToolTip("Test duration in seconds (5-60)")
         layout.addWidget(self.duration_spin)
 
         speed_row = QHBoxLayout()
@@ -185,9 +195,11 @@ class MainWindow(QMainWindow):
         self.speed_slider.setRange(1, 10)
         self.speed_slider.setValue(5)
         self.speed_slider.valueChanged.connect(self._on_speed_changed)
+        self.speed_slider.setToolTip("Target movement speed (0.1 = slow, 1.0 = fast)")
         layout.addWidget(self.speed_slider)
 
         self.start_test_btn = QPushButton("Start Test")
+        self.start_test_btn.setToolTip("Start the eye movement test (requires calibration)")
         self.start_test_btn.setStyleSheet("""
             QPushButton {
                 background-color: #00b894;
@@ -270,9 +282,11 @@ class MainWindow(QMainWindow):
             QPushButton:hover { background-color: #00a884; }
         """)
         self.export_full_btn.clicked.connect(self._export_full_data)
+        self.export_full_btn.setToolTip("Export complete test data as JSON (all frames)")
         btn_layout.addWidget(self.export_full_btn)
 
         self.export_csv_btn = QPushButton("Export CSV")
+        self.export_csv_btn.setToolTip("Export data as CSV for spreadsheet analysis")
         self.export_csv_btn.setStyleSheet("""
             QPushButton {
                 background-color: #0984e3;
