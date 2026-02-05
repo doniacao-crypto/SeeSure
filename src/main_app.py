@@ -24,6 +24,7 @@ from gaze_estimator import GazeEstimator
 from smooth_pursuit_test import (
     TestConfig, TargetPattern, TestResult, generate_report
 )
+from session_history import SessionHistoryManager, SessionSummary
 
 # Import UI widgets from separate modules
 from widgets import CameraThread, CalibrationWidget, TestWidget
@@ -40,6 +41,7 @@ class MainWindow(QMainWindow):
         # Core components
         self.eye_tracker = EyeTracker()
         self.gaze_estimator = GazeEstimator()
+        self.session_history = SessionHistoryManager()
 
         # Camera thread
         self.camera_thread = CameraThread(self.eye_tracker)
@@ -78,6 +80,9 @@ class MainWindow(QMainWindow):
         # Results view
         self.stack.addWidget(self._create_results_view())
         
+        # History view
+        self.stack.addWidget(self._create_history_view())
+        
         # Initialize last result storage
         self._last_result: Optional[TestResult] = None
         
@@ -106,6 +111,22 @@ class MainWindow(QMainWindow):
         
         # Test configuration
         layout.addWidget(self._create_test_config_group())
+        
+        # History button
+        self.history_btn = QPushButton("📋 View History")
+        self.history_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a4a6a;
+                color: white;
+                padding: 8px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #5a5a7a; }
+        """)
+        self.history_btn.setToolTip("View and manage past test sessions")
+        self.history_btn.clicked.connect(self._show_history)
+        layout.addWidget(self.history_btn)
         
         layout.addStretch()
         return panel
@@ -302,6 +323,133 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(btn_layout)
         return widget
+
+    def _create_history_view(self) -> QWidget:
+        """Create the session history view."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        title = QLabel("📋 Test History")
+        title.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        title.setStyleSheet("color: #74b9ff;")
+        layout.addWidget(title)
+
+        # Session list
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+        self.history_list = QListWidget()
+        self.history_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2d2d44;
+                color: #dfe6e9;
+                font-family: monospace;
+                font-size: 12px;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #4a4a6a;
+            }
+            QListWidget::item:selected {
+                background-color: #4a4a6a;
+            }
+        """)
+        self.history_list.itemDoubleClicked.connect(self._load_history_session)
+        layout.addWidget(self.history_list)
+
+        # Button row
+        btn_layout = QHBoxLayout()
+        
+        back_btn = QPushButton("Back to Home")
+        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
+        btn_layout.addWidget(back_btn)
+        
+        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn.clicked.connect(self._refresh_history)
+        btn_layout.addWidget(refresh_btn)
+        
+        delete_btn = QPushButton("🗑️ Delete Selected")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #d63031;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #c02020; }
+        """)
+        delete_btn.clicked.connect(self._delete_history_session)
+        btn_layout.addWidget(delete_btn)
+
+        layout.addLayout(btn_layout)
+        return widget
+
+    def _show_history(self):
+        """Show the history view."""
+        self._refresh_history()
+        self.stack.setCurrentIndex(4)  # History view index
+
+    def _refresh_history(self):
+        """Refresh the history list."""
+        self.history_list.clear()
+        sessions = self.session_history.list_sessions()
+        
+        for session in sessions:
+            item_text = session.to_display_string()
+            from PyQt6.QtWidgets import QListWidgetItem
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, session.filename)
+            self.history_list.addItem(item)
+        
+        if not sessions:
+            self.history_list.addItem("No saved sessions found")
+
+    def _load_history_session(self, item):
+        """Load and display a historical session."""
+        filename = item.data(Qt.ItemDataRole.UserRole)
+        if not filename:
+            return
+        
+        data = self.session_history.load_session(filename)
+        if data:
+            # Display in results view
+            report = f"=== Historical Session ===\n"
+            report += f"File: {filename}\n"
+            report += f"Pattern: {data.get('pattern', 'unknown')}\n"
+            report += f"Duration: {data.get('duration_seconds', 0):.1f}s\n\n"
+            
+            metrics = data.get('metrics', {})
+            if metrics:
+                report += "=== Metrics ===\n"
+                for key, value in metrics.items():
+                    if isinstance(value, float):
+                        report += f"{key}: {value:.3f}\n"
+                    else:
+                        report += f"{key}: {value}\n"
+            
+            self.results_text.setText(report)
+            self.stack.setCurrentIndex(3)  # Results view
+
+    def _delete_history_session(self):
+        """Delete the selected history session."""
+        current = self.history_list.currentItem()
+        if not current:
+            QMessageBox.warning(self, "No Selection", "Please select a session to delete.")
+            return
+        
+        filename = current.data(Qt.ItemDataRole.UserRole)
+        if not filename:
+            return
+        
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Delete session '{filename}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.session_history.delete_session(filename):
+                self._refresh_history()
 
     def _apply_theme(self):
         """Apply the dark theme stylesheet."""
