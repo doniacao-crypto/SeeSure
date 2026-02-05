@@ -231,18 +231,25 @@ class GazeKalmanFilter:
         self.is_saccade = False
         self.velocity = 0.0
 
-    def _get_F(self, dt: float) -> np.ndarray:
-        """State transition matrix."""
-        return np.array([
-            [1, 0, dt, 0],
-            [0, 1, 0, dt],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
+        # Pre-allocated matrices for hot path (reduces allocations)
+        self._F = np.eye(4)  # State transition matrix
+        self._Q = np.zeros((4, 4))  # Process noise covariance
+        self._R = np.zeros((2, 2))  # Measurement noise covariance
+        self._H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]])  # Observation matrix (constant)
+        self._K = np.zeros((4, 2))  # Kalman gain
+        self._y = np.zeros(2)  # Innovation
+        self._S = np.zeros((2, 2))  # Innovation covariance
+        self._temp_4x4 = np.zeros((4, 4))  # Temporary for matrix ops
+        self._temp_4x2 = np.zeros((4, 2))  # Temporary for matrix ops
+        self._z = np.zeros(2)  # Measurement vector
 
-    def _get_Q(self, dt: float) -> np.ndarray:
-        """Process noise covariance matrix."""
-        # Discretized continuous white noise model
+    def _update_F(self, dt: float):
+        """Update state transition matrix in-place."""
+        self._F[0, 2] = dt
+        self._F[1, 3] = dt
+
+    def _update_Q(self, dt: float):
+        """Update process noise covariance matrix in-place."""
         dt2 = dt * dt
         dt3 = dt2 * dt
         dt4 = dt3 * dt
@@ -250,28 +257,26 @@ class GazeKalmanFilter:
         q_pos = self.process_noise_pos
         q_vel = self.process_noise_vel
 
-        return np.array([
-            [dt4/4*q_pos, 0, dt3/2*q_pos, 0],
-            [0, dt4/4*q_pos, 0, dt3/2*q_pos],
-            [dt3/2*q_pos, 0, dt2*q_vel, 0],
-            [0, dt3/2*q_pos, 0, dt2*q_vel]
-        ])
+        # Fill in non-zero elements
+        self._Q[0, 0] = dt4/4*q_pos
+        self._Q[0, 2] = dt3/2*q_pos
+        self._Q[1, 1] = dt4/4*q_pos
+        self._Q[1, 3] = dt3/2*q_pos
+        self._Q[2, 0] = dt3/2*q_pos
+        self._Q[2, 2] = dt2*q_vel
+        self._Q[3, 1] = dt3/2*q_pos
+        self._Q[3, 3] = dt2*q_vel
 
-    def _get_R(self) -> np.ndarray:
-        """Measurement noise covariance (adaptive)."""
-        if self.is_saccade:
-            r = self.measurement_noise_saccade
-        else:
-            r = self.measurement_noise_fixation
-        return np.diag([r, r])
+    def _update_R(self):
+        """Update measurement noise covariance in-place."""
+        r = self.measurement_noise_saccade if self.is_saccade else self.measurement_noise_fixation
+        self._R[0, 0] = r
+        self._R[1, 1] = r
 
     @property
     def H(self) -> np.ndarray:
         """Observation matrix (we only measure position)."""
-        return np.array([
-            [1, 0, 0, 0],
-            [0, 1, 0, 0]
-        ])
+        return self._H
 
     def predict(self, dt: float) -> Tuple[float, float]:
         """
@@ -283,13 +288,14 @@ class GazeKalmanFilter:
         Returns:
             Predicted (x, y) position
         """
-        F = self._get_F(dt)
-        Q = self._get_Q(dt)
+        # Update pre-allocated matrices
+        self._update_F(dt)
+        self._update_Q(dt)
 
         # State prediction
-        self.state = F @ self.state
+        self.state = self._F @ self.state
         # Covariance prediction
-        self.P = F @ self.P @ F.T + Q
+        self.P = self._F @ self.P @ self._F.T + self._Q
 
         return (self.state[0], self.state[1])
 
@@ -323,36 +329,40 @@ class GazeKalmanFilter:
             dt = max(timestamp - self._last_time, 0.001)
         self._last_time = timestamp
 
-        # Predict step
-        F = self._get_F(dt)
-        Q = self._get_Q(dt)
+        # Update pre-allocated matrices
+        self._update_F(dt)
+        self._update_Q(dt)
 
-        state_pred = F @ self.state
-        P_pred = F @ self.P @ F.T + Q
+        # Predict step (in-place where possible)
+        state_pred = self._F @ self.state
+        P_pred = self._F @ self.P @ self._F.T + self._Q
 
         # Compute velocity for saccade detection
         self.velocity = np.sqrt(state_pred[2]**2 + state_pred[3]**2)
         self.is_saccade = self.velocity > self.saccade_threshold
 
-        # Update step
-        z = np.array([x, y])
-        R = self._get_R()
+        # Update measurement noise based on saccade state
+        self._update_R()
 
-        # Innovation
-        y_innov = z - self.H @ state_pred
+        # Measurement vector (reuse pre-allocated)
+        self._z[0] = x
+        self._z[1] = y
+
+        # Innovation (reuse pre-allocated)
+        np.subtract(self._z, self._H @ state_pred, out=self._y)
 
         # Innovation covariance
-        S = self.H @ P_pred @ self.H.T + R
+        np.add(self._H @ P_pred @ self._H.T, self._R, out=self._S)
 
         # Kalman gain
-        K = P_pred @ self.H.T @ np.linalg.inv(S)
+        np.copyto(self._K, P_pred @ self._H.T @ np.linalg.inv(self._S))
 
         # State update
-        self.state = state_pred + K @ y_innov
+        self.state = state_pred + self._K @ self._y
 
         # Covariance update (Joseph form for numerical stability)
-        I_KH = np.eye(4) - K @ self.H
-        self.P = I_KH @ P_pred @ I_KH.T + K @ R @ K.T
+        I_KH = np.eye(4) - self._K @ self._H
+        self.P = I_KH @ P_pred @ I_KH.T + self._K @ self._R @ self._K.T
 
         return (self.state[0], self.state[1])
 
