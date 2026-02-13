@@ -62,11 +62,14 @@ class ValidationConfig:
     screen_width_px: int = 1920
     screen_height_px: int = 1080
     viewing_distance_cm: float = 60.0
-    screen_width_cm: float = 52.0
-    screen_height_cm: float = 29.0
+    screen_width_cm: float = 53.1
+    screen_height_cm: float = 29.9
     
     # Grid margin (percentage from edge)
     margin_percent: float = 0.15
+
+    # Settling time: skip initial samples after saccade to new target (ms)
+    point_settling_ms: float = 500.0
 
 
 @dataclass
@@ -85,7 +88,11 @@ class ValidationResult:
     
     @property
     def accuracy_degrees(self) -> Optional[float]:
-        """Mean accuracy across all points in degrees visual angle."""
+        """Mean accuracy across all points in degrees visual angle.
+
+        Uses IQR-based outlier rejection: errors beyond Q3 + 1.5*IQR
+        are excluded to provide a robust accuracy estimate.
+        """
         errors = []
         for point in self.points:
             if point.mean_gaze_x is not None and point.mean_gaze_y is not None:
@@ -95,7 +102,17 @@ class ValidationResult:
                 )
                 if self._px_per_deg > 0:
                     errors.append(error_px / self._px_per_deg)
-        return np.mean(errors) if errors else None
+        if not errors:
+            return None
+
+        errors_arr = np.array(errors)
+        q1 = np.percentile(errors_arr, 25)
+        q3 = np.percentile(errors_arr, 75)
+        iqr = q3 - q1
+        upper_bound = q3 + 1.5 * iqr
+        filtered = errors_arr[errors_arr <= upper_bound]
+
+        return float(np.mean(filtered)) if len(filtered) > 0 else float(np.mean(errors_arr))
     
     @property
     def accuracy_std_degrees(self) -> Optional[float]:
@@ -181,6 +198,7 @@ class ValidationTest:
         # State
         self._current_point_index = 0
         self._point_start_time = 0.0
+        self._point_settling_ms = config.point_settling_ms
         self.is_running = False
     
     def _generate_points(self):
@@ -266,7 +284,12 @@ class ValidationTest:
                 self.stop()
                 return
             self._point_start_time = time.time()
-        
+            elapsed_ms = 0.0
+
+        # Skip samples during settling time (saccade + filter convergence)
+        if elapsed_ms < self._point_settling_ms:
+            return
+
         # Record gaze data for current point
         if gaze_x is not None and gaze_y is not None:
             current_point = self._points[self._current_point_index]

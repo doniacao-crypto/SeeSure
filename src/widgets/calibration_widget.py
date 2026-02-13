@@ -30,11 +30,17 @@ class CalibrationWidget(QWidget):
         self.grid_size = 3
         self.current_point_index = 0
         self.calibration_points = []
-        self.samples_per_point = 30  # Frames to average per point
+        self.samples_per_point = 45  # Frames to average per point
         self.current_samples = 0
 
         self.is_calibrating = False
         self.countdown = 0
+
+        # Settling time state: let the eye fixate before collecting
+        self._settling = False
+        self._settling_start_time = 0.0
+        self._settling_duration = 0.5  # 500ms settling period
+        self._collecting = False  # True once start_collecting_samples has been called
 
         # Timer for countdown and sampling
         self.timer = QTimer()
@@ -92,6 +98,9 @@ class CalibrationWidget(QWidget):
 
         self.current_point_index = 0
         self.current_samples = 0
+        self._settling = False
+        self._settling_start_time = 0.0
+        self._collecting = False
         self.is_calibrating = True
         self.countdown = 3  # 3 second countdown before first point
 
@@ -106,13 +115,26 @@ class CalibrationWidget(QWidget):
         if self.current_point_index >= len(self.calibration_points):
             return
 
-        # Collect sample
-        point = self.calibration_points[self.current_point_index]
-        if self.gaze_estimator.add_calibration_point(point[0], point[1], eye_data, time.time()):
-            self.current_samples += 1
+        # Handle settling period: wait for eye to fixate on target
+        if self._settling:
+            if (time.time() - self._settling_start_time) < self._settling_duration:
+                self.update()
+                return
+            # Settling complete, begin sample collection
+            self._settling = False
+            self._collecting = True
+            self.gaze_estimator.start_collecting_samples()
+
+        # Collect sample using multi-sample API
+        if self._collecting:
+            if self.gaze_estimator.add_calibration_sample(eye_data, time.time()):
+                self.current_samples += 1
 
         # Check if we have enough samples for this point
         if self.current_samples >= self.samples_per_point:
+            point = self.calibration_points[self.current_point_index]
+            self.gaze_estimator.finish_collecting_samples(point[0], point[1])
+            self._collecting = False
             self.current_samples = 0
             self.current_point_index += 1
             self.countdown = 2  # Short countdown between points
@@ -129,6 +151,10 @@ class CalibrationWidget(QWidget):
         self.countdown -= 1
         if self.countdown <= 0:
             self.timer.stop()
+            # Start settling period before collecting samples
+            self._settling = True
+            self._settling_start_time = time.time()
+            self._collecting = False
         self.update()
 
     def _finish_calibration(self):

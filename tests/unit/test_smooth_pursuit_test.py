@@ -235,7 +235,7 @@ class TestTestConfig:
         assert config.duration_seconds == 10.0
         assert config.speed == 0.5
         assert config.target_size == 20
-        assert config.margin == 0.1
+        assert config.margin == 0.03
 
     def test_margin_bounds(self):
         """Test that margin affects usable area correctly."""

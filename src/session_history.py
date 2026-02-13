@@ -76,16 +76,16 @@ class SessionHistoryManager:
         if not timestamp:
             return None
         
-        # Extract metrics
-        metrics = data.get('metrics', {})
-        
+        # Extract metrics - clinical metrics are under 'clinical_metrics' key
+        clinical = data.get('clinical_metrics') or {}
+
         return SessionSummary(
             filename=filepath.name,
             timestamp=timestamp,
             pattern=data.get('pattern', 'unknown'),
-            duration_seconds=data.get('duration_seconds', 0),
-            accuracy_degrees=metrics.get('accuracy_degrees'),
-            pursuit_gain=metrics.get('pursuit_gain')
+            duration_seconds=data.get('duration', 0),
+            accuracy_degrees=clinical.get('accuracy_degrees'),
+            pursuit_gain=clinical.get('pursuit_gain')
         )
     
     def _parse_timestamp(self, filename: str, data: Dict[str, Any]) -> Optional[datetime]:
@@ -114,35 +114,50 @@ class SessionHistoryManager:
         
         return None
     
+    def _validate_path(self, filename: str) -> Optional[Path]:
+        """
+        Validate that the filename resolves to a path within results_dir.
+
+        Args:
+            filename: Name of the result file
+
+        Returns:
+            Resolved Path if valid, None if path traversal detected
+        """
+        filepath = (self.results_dir / filename).resolve()
+        if not str(filepath).startswith(str(self.results_dir.resolve())):
+            return None
+        return filepath
+
     def load_session(self, filename: str) -> Optional[Dict[str, Any]]:
         """
         Load full session data.
-        
+
         Args:
             filename: Name of the result file
-            
+
         Returns:
-            Full session data or None if not found
+            Full session data or None if not found/invalid path
         """
-        filepath = self.results_dir / filename
-        if not filepath.exists():
+        filepath = self._validate_path(filename)
+        if filepath is None or not filepath.exists():
             return None
-        
+
         with open(filepath, 'r') as f:
             return json.load(f)
     
     def delete_session(self, filename: str) -> bool:
         """
         Delete a session file.
-        
+
         Args:
             filename: Name of the result file
-            
+
         Returns:
-            True if deleted, False if not found
+            True if deleted, False if not found/invalid path
         """
-        filepath = self.results_dir / filename
-        if filepath.exists():
+        filepath = self._validate_path(filename)
+        if filepath is not None and filepath.exists():
             filepath.unlink()
             return True
         return False

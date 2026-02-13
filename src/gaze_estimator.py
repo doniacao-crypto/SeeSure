@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple, List, Dict
 import json
 from pathlib import Path
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import Ridge, RidgeCV
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.pipeline import Pipeline
 from eye_tracker import EyeData
@@ -199,7 +199,7 @@ class GazeEstimator:
         self,
         screen_width: int = 1920,
         screen_height: int = 1080,
-        filter_mode: str = 'combined',
+        filter_mode: str = 'one_euro',
         polynomial_degree: int = 2
     ):
         """
@@ -252,8 +252,8 @@ class GazeEstimator:
         # 1-Euro Filter (adaptive jitter reduction)
         self._one_euro_filter = OneEuroFilter2D(
             freq=30.0,
-            mincutoff=1.0,
-            beta=0.007,
+            mincutoff=1.5,
+            beta=0.2,
             dcutoff=1.0
         )
 
@@ -532,10 +532,10 @@ class GazeEstimator:
         # Build Ridge regression models
         # Alpha (regularization strength) prevents overfitting
         try:
-            self._model_x = Ridge(alpha=1.0)
+            self._model_x = RidgeCV(alphas=[0.01, 0.1, 1.0, 10.0, 100.0])
             self._model_x.fit(features, target_x)
 
-            self._model_y = Ridge(alpha=1.0)
+            self._model_y = RidgeCV(alphas=[0.01, 0.1, 1.0, 10.0, 100.0])
             self._model_y.fit(features, target_y)
 
             # Learn head compensation factors
@@ -602,20 +602,13 @@ class GazeEstimator:
         except Exception:
             return None
 
-        # Apply head pose compensation for movement beyond calibration range
-        pitch_delta = eye_data.head_pitch - self._ref_head_pitch
-        yaw_delta = eye_data.head_yaw - self._ref_head_yaw
-
-        gaze_y += pitch_delta * self._pitch_factor
-        gaze_x -= yaw_delta * self._yaw_factor
-
-        # Clamp to screen bounds (before filtering)
-        gaze_x = np.clip(gaze_x, 0, self.screen_width - 1)
-        gaze_y = np.clip(gaze_y, 0, self.screen_height - 1)
-
-        # Apply filtering
+        # Apply filtering (before clamping to avoid corrupting filter velocity estimates)
         if apply_smoothing:
             gaze_x, gaze_y = self._apply_filter(gaze_x, gaze_y, timestamp)
+
+        # Clamp to screen bounds (after filtering)
+        gaze_x = np.clip(gaze_x, 0, self.screen_width - 1)
+        gaze_y = np.clip(gaze_y, 0, self.screen_height - 1)
 
         # Store last valid gaze for blink prediction
         self._last_valid_gaze = (gaze_x, gaze_y)

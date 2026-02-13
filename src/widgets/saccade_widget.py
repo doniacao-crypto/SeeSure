@@ -3,6 +3,8 @@ Saccade Test Widget for Eye Movement Assessment.
 Provides full-screen display for saccade testing protocol.
 """
 
+from typing import Optional
+
 from PyQt6.QtWidgets import QWidget, QLabel
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
@@ -22,7 +24,7 @@ class SaccadeWidget(QWidget):
         super().__init__(parent)
         self.setStyleSheet("background-color: #1a1a1a;")
         
-        self._test: SaccadeTest = None
+        self._test: Optional[SaccadeTest] = None
         self._gaze_estimator = None
         
         # Colors
@@ -70,7 +72,8 @@ class SaccadeWidget(QWidget):
             self._test.stop()
             result = self._test.result
             self._test = None
-            self.test_complete.emit(result)
+            if result is not None:
+                self.test_complete.emit(result)
             self.update()
     
     def process_eye_data(self, eye_data):
@@ -86,11 +89,9 @@ class SaccadeWidget(QWidget):
         # Get gaze position from estimator
         gaze_x, gaze_y = None, None
         if self._gaze_estimator and self._gaze_estimator.is_calibrated:
-            gaze_x, gaze_y = self._gaze_estimator.estimate(
-                eye_data.left_pupil, eye_data.right_pupil,
-                eye_data.head_pitch, eye_data.head_yaw,
-                eye_data.capture_time
-            )
+            result = self._gaze_estimator.estimate_gaze(eye_data)
+            if result is not None:
+                gaze_x, gaze_y = result
         
         # Update test
         import time

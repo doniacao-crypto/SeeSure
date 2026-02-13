@@ -110,6 +110,7 @@ class EyeTracker:
         self._use_video_mode = use_video_mode
         self._latest_result = None
         self._result_lock = threading.Lock()
+        self._frame_counter = 0
         self._frame_timestamp_ms = 0
 
         # Create FaceLandmarker with appropriate running mode
@@ -184,7 +185,9 @@ class EyeTracker:
 
     def _init_camera_matrix(self, frame_width: int, frame_height: int):
         """Initialize camera matrix based on frame dimensions."""
-        focal_length = frame_width
+        # Estimate focal length assuming ~62 degree horizontal FOV (typical webcam)
+        hfov_rad = np.radians(62)
+        focal_length = (frame_width / 2) / np.tan(hfov_rad / 2)
         center = (frame_width / 2, frame_height / 2)
         self.camera_matrix = np.array([
             [focal_length, 0, center[0]],
@@ -393,8 +396,9 @@ class EyeTracker:
 
         # Process frame with appropriate mode
         if self._use_video_mode:
-            # VIDEO mode: use detect_for_video with timestamp for temporal tracking
-            self._frame_timestamp_ms = int(time.time() * 1000)
+            # VIDEO mode: use monotonic counter for strictly increasing timestamps
+            self._frame_counter += 1
+            self._frame_timestamp_ms = self._frame_counter * 33  # ~30fps intervals
             results = self.face_landmarker.detect_for_video(mp_image, self._frame_timestamp_ms)
         else:
             # IMAGE mode: process each frame independently
@@ -419,9 +423,9 @@ class EyeTracker:
         eye_data.left_eye_corners = self._get_eye_corners(
             face_landmarks, self.LEFT_EYE_INDICES, frame_width, frame_height
         )
-        eye_data.left_iris_center = self._calculate_iris_position_in_eye(
-            eye_data.left_iris_pixel, eye_data.left_eye_corners
-        )
+        # Use raw normalized MediaPipe iris coordinates (0-1 frame-space)
+        # instead of lossy re-derivation via _calculate_iris_position_in_eye
+        eye_data.left_iris_center = left_norm
 
         # Extract right eye data
         eye_data.right_iris_pixel, right_norm = self._get_iris_center(
@@ -430,9 +434,8 @@ class EyeTracker:
         eye_data.right_eye_corners = self._get_eye_corners(
             face_landmarks, self.RIGHT_EYE_INDICES, frame_width, frame_height
         )
-        eye_data.right_iris_center = self._calculate_iris_position_in_eye(
-            eye_data.right_iris_pixel, eye_data.right_eye_corners
-        )
+        # Use raw normalized MediaPipe iris coordinates (0-1 frame-space)
+        eye_data.right_iris_center = right_norm
 
         # Estimate head pose
         pitch, yaw, roll = self._estimate_head_pose(face_landmarks, frame_width, frame_height)

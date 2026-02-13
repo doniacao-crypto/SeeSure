@@ -14,7 +14,9 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QStackedWidget, QFrame,
     QProgressBar, QTextEdit, QSlider, QGroupBox, QMessageBox,
-    QFileDialog, QSpinBox, QDoubleSpinBox
+    QFileDialog, QSpinBox, QDoubleSpinBox,
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QCheckBox,
+    QListWidget, QListWidgetItem, QTabWidget
 )
 from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QImage, QPixmap, QFont
@@ -37,6 +39,15 @@ from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget, 
 
 class MainWindow(QMainWindow):
     """Main application window."""
+
+    # View indices for QStackedWidget
+    HOME_VIEW = 0
+    CALIBRATION_VIEW = 1
+    TEST_VIEW = 2
+    SACCADE_VIEW = 3
+    VALIDATION_VIEW = 4
+    RESULTS_VIEW = 5
+    HISTORY_VIEW = 6
 
     def __init__(self):
         super().__init__()
@@ -241,8 +252,6 @@ class MainWindow(QMainWindow):
 
     def _create_new_patient(self):
         """Show dialog to create new patient."""
-        from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QCheckBox
-        
         dialog = QDialog(self)
         dialog.setWindowTitle("New Patient")
         dialog.setMinimumWidth(300)
@@ -288,8 +297,6 @@ class MainWindow(QMainWindow):
         if not self.current_patient:
             QMessageBox.warning(self, "No Patient", "Please select a patient first.")
             return
-        
-        from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QCheckBox
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Edit Patient")
@@ -485,7 +492,7 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         
         self.back_btn = QPushButton("Back to Home")
-        self.back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
+        self.back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(self.HOME_VIEW))
         btn_layout.addWidget(self.back_btn)
 
         self.export_full_btn = QPushButton("Export Full Data")
@@ -562,7 +569,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
 
         # Session list
-        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
         self.history_list = QListWidget()
         self.history_list.setStyleSheet("""
             QListWidget {
@@ -588,7 +594,7 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         
         back_btn = QPushButton("Back to Home")
-        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
+        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(self.HOME_VIEW))
         btn_layout.addWidget(back_btn)
         
         refresh_btn = QPushButton("🔄 Refresh")
@@ -614,7 +620,7 @@ class MainWindow(QMainWindow):
     def _show_history(self):
         """Show the history view."""
         self._refresh_history()
-        self.stack.setCurrentIndex(6)  # History view index
+        self.stack.setCurrentIndex(self.HISTORY_VIEW)
 
     def _refresh_history(self):
         """Refresh the history list."""
@@ -623,7 +629,6 @@ class MainWindow(QMainWindow):
         
         for session in sessions:
             item_text = session.to_display_string()
-            from PyQt6.QtWidgets import QListWidgetItem
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, session.filename)
             self.history_list.addItem(item)
@@ -655,7 +660,7 @@ class MainWindow(QMainWindow):
                         report += f"{key}: {value}\n"
             
             self.results_text.setText(report)
-            self.stack.setCurrentIndex(5)  # Results view
+            self.stack.setCurrentIndex(self.RESULTS_VIEW)
 
     def _delete_history_session(self):
         """Delete the selected history session."""
@@ -798,9 +803,8 @@ class MainWindow(QMainWindow):
     def _on_calibration_complete(self):
         """Handle calibration completion."""
         self.calibration_widget.showNormal()
-        self.stack.setCurrentIndex(0)
+        self.stack.setCurrentIndex(self.HOME_VIEW)
         self.calibration_status.setText("🎯 Calibration: ✓ Done")
-        self.calibration_status.setStyleSheet("color: #00b894;")
         self.calibration_status.setStyleSheet("color: #00b894;")
 
     def _save_profile(self):
@@ -826,7 +830,6 @@ class MainWindow(QMainWindow):
         if filepath:
             if self.gaze_estimator.load_profile(filepath):
                 self.calibration_status.setText("🎯 Calibration: ✓ Loaded")
-                self.calibration_status.setStyleSheet("color: #00b894;")
                 self.calibration_status.setStyleSheet("color: #00b894;")
                 QMessageBox.information(self, "Loaded", "Profile loaded successfully.")
             else:
@@ -899,10 +902,12 @@ class MainWindow(QMainWindow):
         report = generate_report(result)
         self.results_text.setText(report + save_message)
 
-        self.stack.setCurrentIndex(5)  # Results view (index shifted due to saccade widget)
+        self.stack.setCurrentIndex(self.RESULTS_VIEW)
 
     def _on_saccade_complete(self, result: SaccadeTestResult):
         """Handle saccade test completion."""
+        if result is None:
+            return
         self.saccade_widget.showNormal()
         
         # Store result (note: different type than smooth pursuit result)
@@ -911,8 +916,8 @@ class MainWindow(QMainWindow):
         # Generate and display report
         report = generate_saccade_report(result)
         self.results_text.setText(report)
-        
-        self.stack.setCurrentIndex(5)  # Results view
+
+        self.stack.setCurrentIndex(self.RESULTS_VIEW)
 
     def _start_validation(self):
         """Start gaze accuracy validation."""
@@ -953,8 +958,8 @@ class MainWindow(QMainWindow):
             else:
                 self.calibration_status.setText(f"🎯 Calibration: ⚠️ {acc:.2f}° (>2°)")
                 self.calibration_status.setStyleSheet("color: #fdcb6e;")
-        
-        self.stack.setCurrentIndex(5)  # Results view
+
+        self.stack.setCurrentIndex(self.RESULTS_VIEW)
 
     def _export_full_data(self):
         """Export full test data including all frame-by-frame details."""
@@ -997,9 +1002,6 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QTabWidget
-            from PyQt6.QtGui import QPixmap
-            
             # Generate trajectory plots
             visualizer = TrajectoryVisualizer()
             xy_fig, time_fig = generate_trajectory_from_result(self._last_result, visualizer)
@@ -1104,9 +1106,6 @@ class MainWindow(QMainWindow):
             return
         
         try:
-            from pathlib import Path
-            import time
-            
             visualizer = TrajectoryVisualizer()
             xy_fig, time_fig = generate_trajectory_from_result(self._last_result, visualizer)
             

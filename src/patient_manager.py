@@ -4,6 +4,7 @@ Manages patient records, demographics, and test history.
 """
 
 import json
+import re
 import uuid
 from pathlib import Path
 from datetime import datetime
@@ -69,9 +70,52 @@ class Patient:
         return self.name
 
 
+_VALID_GENDERS = {"male", "female", "other", "prefer_not_to_say", ""}
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_PROTECTED_FIELDS = {"id", "created_at", "test_sessions"}
+
+
 class PatientManager:
     """Manages patient profiles."""
-    
+
+    @staticmethod
+    def _validate_fields(kwargs: Dict[str, Any]) -> None:
+        """
+        Validate patient field values.
+
+        Args:
+            kwargs: Field name/value pairs to validate
+
+        Raises:
+            ValueError: If any field value is invalid
+        """
+        if "name" in kwargs:
+            name = kwargs["name"]
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("name must be a non-empty string")
+
+        if "date_of_birth" in kwargs:
+            dob = kwargs["date_of_birth"]
+            if dob:  # allow empty string to clear the field
+                if not isinstance(dob, str) or not _DATE_RE.match(dob):
+                    raise ValueError(
+                        "date_of_birth must match YYYY-MM-DD format"
+                    )
+                # Verify it parses to a real date
+                try:
+                    datetime.strptime(dob, "%Y-%m-%d")
+                except ValueError:
+                    raise ValueError(
+                        "date_of_birth is not a valid calendar date"
+                    )
+
+        if "gender" in kwargs:
+            gender = kwargs["gender"]
+            if not isinstance(gender, str) or gender.lower() not in _VALID_GENDERS:
+                raise ValueError(
+                    f"gender must be one of: {', '.join(sorted(_VALID_GENDERS - {''})) or 'empty string'}"
+                )
+
     def __init__(self, data_dir: str = "data/patients"):
         """
         Initialize patient manager.
@@ -104,13 +148,17 @@ class PatientManager:
     def create(self, **kwargs) -> Patient:
         """
         Create a new patient profile.
-        
+
         Args:
             **kwargs: Patient attributes (name, date_of_birth, etc.)
-            
+
         Returns:
             Created Patient object
+
+        Raises:
+            ValueError: If any field value is invalid
         """
+        self._validate_fields(kwargs)
         patient = Patient(**kwargs)
         self._patients[patient.id] = patient
         self._save_patient(patient)
@@ -123,22 +171,35 @@ class PatientManager:
     def update(self, patient_id: str, **kwargs) -> Optional[Patient]:
         """
         Update a patient profile.
-        
+
         Args:
             patient_id: Patient ID to update
             **kwargs: Attributes to update
-            
+
         Returns:
             Updated Patient or None if not found
+
+        Raises:
+            ValueError: If attempting to overwrite protected fields or
+                        if any field value is invalid
         """
         patient = self._patients.get(patient_id)
         if not patient:
             return None
-        
+
+        # Block protected fields from being overwritten
+        protected_overlap = _PROTECTED_FIELDS & set(kwargs.keys())
+        if protected_overlap:
+            raise ValueError(
+                f"Cannot overwrite protected fields: {', '.join(sorted(protected_overlap))}"
+            )
+
+        self._validate_fields(kwargs)
+
         for key, value in kwargs.items():
             if hasattr(patient, key):
                 setattr(patient, key, value)
-        
+
         patient.updated_at = datetime.now().isoformat()
         self._save_patient(patient)
         return patient

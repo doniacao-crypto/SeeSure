@@ -3,6 +3,8 @@ Validation Widget for Gaze Accuracy Testing.
 Provides full-screen display for accuracy validation.
 """
 
+from typing import Optional
+
 from PyQt6.QtWidgets import QWidget, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
@@ -22,7 +24,7 @@ class ValidationWidget(QWidget):
         super().__init__(parent)
         self.setStyleSheet("background-color: #1a1a1a;")
         
-        self._test: ValidationTest = None
+        self._test: Optional[ValidationTest] = None
         self._gaze_estimator = None
         
         # Colors
@@ -97,11 +99,9 @@ class ValidationWidget(QWidget):
         # Get gaze position from estimator
         gaze_x, gaze_y = None, None
         if self._gaze_estimator and self._gaze_estimator.is_calibrated:
-            gaze_x, gaze_y = self._gaze_estimator.estimate(
-                eye_data.left_pupil, eye_data.right_pupil,
-                eye_data.head_pitch, eye_data.head_yaw,
-                eye_data.capture_time
-            )
+            result = self._gaze_estimator.estimate_gaze(eye_data)
+            if result is not None:
+                gaze_x, gaze_y = result
         
         # Update test
         import time

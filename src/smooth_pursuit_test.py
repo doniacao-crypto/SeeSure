@@ -273,23 +273,28 @@ class TestResult:
 
         # Save summary data
         summary = self.to_summary_dict()
-        # Flatten nested metrics for CSV
+        # Flatten nested metrics for CSV using keys from to_summary_dict()
         flat_summary = {
             "pattern": summary.get("pattern"),
-            "duration_seconds": summary.get("duration_seconds"),
+            "duration": summary.get("duration"),
             "total_frames": summary.get("total_frames"),
-            "valid_frames": summary.get("valid_frames"),
-            "valid_frame_ratio": summary.get("valid_frame_ratio"),
         }
         if summary.get("metrics"):
             metrics = summary["metrics"]
             flat_summary.update({
-                "pursuit_gain": metrics.get("pursuit_gain"),
-                "accuracy_degrees": metrics.get("accuracy_degrees"),
-                "rmse_degrees": metrics.get("rmse_degrees"),
-                "smoothness": metrics.get("smoothness"),
-                "saccade_count": metrics.get("saccade_count"),
-                "saccade_rate_hz": metrics.get("saccade_rate_hz"),
+                "tracking_ratio": metrics.get("tracking_ratio"),
+                "avg_distance_px": metrics.get("avg_distance_px"),
+                "accuracy_score": metrics.get("accuracy_score"),
+                "smooth_score": metrics.get("smooth_score"),
+                "lag_ms": metrics.get("lag_ms"),
+            })
+        if summary.get("clinical_metrics"):
+            clinical = summary["clinical_metrics"]
+            flat_summary.update({
+                "pursuit_gain": clinical.get("pursuit_gain"),
+                "accuracy_degrees": clinical.get("accuracy_degrees"),
+                "smoothness": clinical.get("smoothness"),
+                "catch_up_saccade_count": clinical.get("catch_up_saccade_count"),
             })
 
         summary_df = pd.DataFrame([flat_summary])

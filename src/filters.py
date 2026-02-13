@@ -56,8 +56,8 @@ class OneEuroFilter:
     def __init__(
         self,
         freq: float = 30.0,
-        mincutoff: float = 1.0,
-        beta: float = 0.007,
+        mincutoff: float = 1.5,
+        beta: float = 0.2,
         dcutoff: float = 1.0
     ):
         """
@@ -132,8 +132,8 @@ class OneEuroFilter2D:
     def __init__(
         self,
         freq: float = 30.0,
-        mincutoff: float = 1.0,
-        beta: float = 0.007,
+        mincutoff: float = 1.5,
+        beta: float = 0.2,
         dcutoff: float = 1.0
     ):
         """
@@ -197,11 +197,11 @@ class GazeKalmanFilter:
 
     def __init__(
         self,
-        process_noise_pos: float = 0.1,
+        process_noise_pos: float = 1.0,
         process_noise_vel: float = 1.0,
-        measurement_noise_fixation: float = 5.0,
-        measurement_noise_saccade: float = 50.0,
-        saccade_threshold: float = 100.0
+        measurement_noise_fixation: float = 2.0,
+        measurement_noise_saccade: float = 15.0,
+        saccade_threshold: float = 300.0
     ):
         """
         Initialize Kalman Filter.

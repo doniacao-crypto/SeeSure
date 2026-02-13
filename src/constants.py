@@ -19,7 +19,7 @@ EAR_CONSEC_FRAMES = 2                 # Consecutive frames to confirm blink
 # =============================================================================
 # Saccade Detection
 # =============================================================================
-SACCADE_VELOCITY_THRESHOLD = 30.0     # Velocity threshold for saccade (deg/s)
+SACCADE_VELOCITY_THRESHOLD = 50.0     # Velocity threshold for saccade (deg/s)
 MICROSACCADE_VELOCITY_THRESHOLD = 15.0  # Velocity threshold for microsaccade (deg/s)
 MIN_SACCADE_DURATION_MS = 20.0        # Minimum saccade duration (ms)
 MICROSACCADE_MAX_AMPLITUDE_DEG = 1.0  # Maximum microsaccade amplitude (degrees)
@@ -38,8 +38,8 @@ BCEA_PROBABILITY = 0.68               # Probability for BCEA (≈1 SD, 68% conto
 # =============================================================================
 # Filter Parameters
 # =============================================================================
-ONEURO_MINCUTOFF = 1.0                # 1-Euro filter minimum cutoff frequency
-ONEURO_BETA = 0.007                   # 1-Euro filter speed coefficient
+ONEURO_MINCUTOFF = 1.5                # 1-Euro filter minimum cutoff frequency
+ONEURO_BETA = 0.2                     # 1-Euro filter speed coefficient
 ONEURO_DCUTOFF = 1.0                  # 1-Euro filter derivative cutoff
 
 # =============================================================================
