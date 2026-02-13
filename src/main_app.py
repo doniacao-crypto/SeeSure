@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QStackedWidget, QFrame,
     QProgressBar, QTextEdit, QSlider, QGroupBox, QMessageBox,
-    QFileDialog, QSpinBox, QDoubleSpinBox,
+    QFileDialog, QSpinBox, QDoubleSpinBox, QScrollArea,
     QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QCheckBox,
     QListWidget, QListWidgetItem, QTabWidget
 )
@@ -139,18 +139,31 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.camera_label)
         self._camera_initialized = False
 
-        # Status indicators
+        # Status indicators (pinned above scroll area)
         layout.addWidget(self._create_status_group())
-        
+
+        # Scrollable area for remaining controls
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet("""
+            QScrollArea { border: none; background-color: transparent; }
+            QScrollArea > QWidget > QWidget { background-color: transparent; }
+        """)
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+
         # Patient selector
-        layout.addWidget(self._create_patient_group())
-        
+        scroll_layout.addWidget(self._create_patient_group())
+
         # Calibration controls
-        layout.addWidget(self._create_calibration_group())
-        
+        scroll_layout.addWidget(self._create_calibration_group())
+
         # Test configuration
-        layout.addWidget(self._create_test_config_group())
-        
+        scroll_layout.addWidget(self._create_test_config_group())
+
         # History button
         self.history_btn = QPushButton("📋 View History")
         self.history_btn.setStyleSheet("""
@@ -165,9 +178,11 @@ class MainWindow(QMainWindow):
         """)
         self.history_btn.setToolTip("View and manage past test sessions")
         self.history_btn.clicked.connect(self._show_history)
-        layout.addWidget(self.history_btn)
-        
-        layout.addStretch()
+        scroll_layout.addWidget(self.history_btn)
+
+        scroll_layout.addStretch()
+        scroll_area.setWidget(scroll_content)
+        layout.addWidget(scroll_area)
         return panel
 
     def _create_status_group(self) -> QGroupBox:
@@ -1141,7 +1156,7 @@ def main():
     app.setStyle("Fusion")
 
     window = MainWindow()
-    window.show()
+    window.showMaximized()
 
     # Ensure window comes to front on macOS
     window.raise_()

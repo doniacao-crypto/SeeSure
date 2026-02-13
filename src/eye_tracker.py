@@ -78,13 +78,15 @@ class EyeTracker:
     POSE_LANDMARKS = [1, 152, 33, 263, 61, 291]
 
     # 3D model points for head pose estimation (generic face model)
+    # X-coordinates are positive-right in camera view (non-mirrored image):
+    # Subject's left eye appears on the RIGHT of the image → positive X
     MODEL_POINTS = np.array([
         (0.0, 0.0, 0.0),          # Nose tip
         (0.0, -330.0, -65.0),     # Chin
-        (-225.0, 170.0, -135.0),  # Left eye corner
-        (225.0, 170.0, -135.0),   # Right eye corner
-        (-150.0, -150.0, -125.0), # Left mouth corner
-        (150.0, -150.0, -125.0)   # Right mouth corner
+        (225.0, 170.0, -135.0),   # Left eye corner (subject's left = camera's right)
+        (-225.0, 170.0, -135.0),  # Right eye corner (subject's right = camera's left)
+        (150.0, -150.0, -125.0),  # Left mouth corner
+        (-150.0, -150.0, -125.0)  # Right mouth corner
     ], dtype=np.float64)
 
     # Model download URL and integrity verification
@@ -227,14 +229,15 @@ class EyeTracker:
                                          frame_width: int = 640,
                                          frame_height: int = 480) -> Tuple[float, float]:
         """
-        Calculate normalized iris position for gaze estimation.
+        Calculate normalized iris position relative to eye center.
 
-        Uses a combination of:
-        1. Iris position relative to eye center (for within-eye gaze direction)
-        2. Overall iris position in frame (for head position compensation)
+        Computes the iris displacement from the eye center, normalized by eye
+        width for scale invariance. Returns values centered at 0.5 where the
+        iris is centered in the eye socket. No arbitrary scaling or hard clamping
+        is applied — the polynomial regression handles range adaptation.
 
         Returns:
-            Tuple of (x, y) in 0-1 range representing gaze direction
+            Tuple of (x, y) centered around 0.5 representing relative gaze direction
         """
         if len(eye_corners) < 2:
             return (0.5, 0.5)
@@ -242,7 +245,7 @@ class EyeTracker:
         outer_corner = eye_corners[0]
         inner_corner = eye_corners[1]
 
-        # Calculate eye center
+        # Calculate eye center from corners
         eye_center_x = (outer_corner[0] + inner_corner[0]) / 2
         eye_center_y = (outer_corner[1] + inner_corner[1]) / 2
 
@@ -253,19 +256,16 @@ class EyeTracker:
         if eye_width < 1:
             return (0.5, 0.5)
 
-        # Method 1: Iris offset from eye center (sensitive to gaze direction)
-        # This captures the actual eye movement within the socket
+        # Iris offset from eye center, normalized by eye width (isotropic)
         iris_offset_x = (iris_center[0] - eye_center_x) / eye_width
-        iris_offset_y = (iris_center[1] - eye_center_y) / (eye_width * 0.5)
+        iris_offset_y = (iris_center[1] - eye_center_y) / eye_width
 
-        # Map to 0-1 range (typical range is about -0.3 to +0.3)
-        # Scale up to make it more sensitive
-        gaze_x = 0.5 + iris_offset_x * 1.5  # Scale factor to increase sensitivity
-        gaze_y = 0.5 + iris_offset_y * 1.5
-
-        # Clamp to valid range
-        gaze_x = np.clip(gaze_x, 0.0, 1.0)
-        gaze_y = np.clip(gaze_y, 0.0, 1.0)
+        # Map to range centered at 0.5
+        # Negate X because in the non-mirrored camera image, looking screen-left
+        # moves the iris to camera-right. Flipping makes iris_x increase when
+        # looking right (matching screen coordinate direction).
+        gaze_x = 0.5 - iris_offset_x
+        gaze_y = 0.5 + iris_offset_y
 
         return (gaze_x, gaze_y)
 
@@ -423,9 +423,10 @@ class EyeTracker:
         eye_data.left_eye_corners = self._get_eye_corners(
             face_landmarks, self.LEFT_EYE_INDICES, frame_width, frame_height
         )
-        # Use raw normalized MediaPipe iris coordinates (0-1 frame-space)
-        # instead of lossy re-derivation via _calculate_iris_position_in_eye
-        eye_data.left_iris_center = left_norm
+        # Compute iris position relative to eye center (isolates gaze from head position)
+        eye_data.left_iris_center = self._calculate_iris_position_in_eye(
+            eye_data.left_iris_pixel, eye_data.left_eye_corners, frame_width, frame_height
+        )
 
         # Extract right eye data
         eye_data.right_iris_pixel, right_norm = self._get_iris_center(
@@ -434,8 +435,10 @@ class EyeTracker:
         eye_data.right_eye_corners = self._get_eye_corners(
             face_landmarks, self.RIGHT_EYE_INDICES, frame_width, frame_height
         )
-        # Use raw normalized MediaPipe iris coordinates (0-1 frame-space)
-        eye_data.right_iris_center = right_norm
+        # Compute iris position relative to eye center (isolates gaze from head position)
+        eye_data.right_iris_center = self._calculate_iris_position_in_eye(
+            eye_data.right_iris_pixel, eye_data.right_eye_corners, frame_width, frame_height
+        )
 
         # Estimate head pose
         pitch, yaw, roll = self._estimate_head_pose(face_landmarks, frame_width, frame_height)
@@ -462,25 +465,30 @@ class EyeTracker:
             Frame with debug drawings
         """
         debug_frame = frame.copy()
+        frame_w = debug_frame.shape[1]
 
         if not eye_data.face_detected:
             cv2.putText(debug_frame, "No face detected", (10, 30),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             return debug_frame
 
+        # Helper to mirror x-coordinate for display (frame is flipped but eye_data is not)
+        def mirror(pt):
+            return (frame_w - 1 - pt[0], pt[1])
+
         # Draw iris centers
         if eye_data.left_iris_pixel:
-            cv2.circle(debug_frame, eye_data.left_iris_pixel, 3, (0, 255, 0), -1)
+            cv2.circle(debug_frame, mirror(eye_data.left_iris_pixel), 3, (0, 255, 0), -1)
         if eye_data.right_iris_pixel:
-            cv2.circle(debug_frame, eye_data.right_iris_pixel, 3, (0, 255, 0), -1)
+            cv2.circle(debug_frame, mirror(eye_data.right_iris_pixel), 3, (0, 255, 0), -1)
 
         # Draw eye corners
         if eye_data.left_eye_corners:
             for corner in eye_data.left_eye_corners:
-                cv2.circle(debug_frame, corner, 2, (255, 0, 0), -1)
+                cv2.circle(debug_frame, mirror(corner), 2, (255, 0, 0), -1)
         if eye_data.right_eye_corners:
             for corner in eye_data.right_eye_corners:
-                cv2.circle(debug_frame, corner, 2, (255, 0, 0), -1)
+                cv2.circle(debug_frame, mirror(corner), 2, (255, 0, 0), -1)
 
         # Draw head pose info
         pose_text = f"Pitch: {eye_data.head_pitch:.1f} Yaw: {eye_data.head_yaw:.1f} Roll: {eye_data.head_roll:.1f}"
