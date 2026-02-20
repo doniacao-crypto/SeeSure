@@ -43,9 +43,11 @@ jobs:
   claude-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    continue-on-error: true  # Claude Code GitHub App must be installed at https://github.com/apps/claude
     permissions:
       contents: read
       pull-requests: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -1,0 +1,14 @@
+name = "eyeexam-waitlist"
+main = "index.js"
+compatibility_date = "2026-02-20"
+account_id = "c29ebafa0f19f8f48f5dca2b83dec315"
+
+# Environment variables (set via wrangler secret or dashboard)
+[vars]
+# ADMIN_TOKEN should be set as a secret: wrangler secret put ADMIN_TOKEN
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "eyeexam-waitlist"
+database_id = "65e177ff-d9c2-4795-a522-dd0842550232"

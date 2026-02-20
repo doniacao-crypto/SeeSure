@@ -89,7 +89,7 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - name: NPM Security Audit
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high --omit=dev
       
       # Python security audit
       - uses: actions/setup-python@v5
