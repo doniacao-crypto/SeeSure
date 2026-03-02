@@ -4,11 +4,13 @@ Manages patient records, demographics, and test history.
 """
 
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
+from .crypto import encrypt_json, decrypt_json, init_key, MissingEncryptionKey
 from typing import List, Optional, Dict, Any
 
 
@@ -75,6 +77,8 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _PROTECTED_FIELDS = {"id", "created_at", "test_sessions"}
 
 
+_logger = logging.getLogger(__name__)
+
 class PatientManager:
     """Manages patient profiles."""
 
@@ -129,21 +133,26 @@ class PatientManager:
         self._load_all()
     
     def _load_all(self):
-        """Load all patient profiles from disk."""
-        for filepath in self.data_dir.glob("*.json"):
+        """Load all encrypted patient profiles from disk.
+
+        Raises MissingEncryptionKey if the OS keychain key is absent so the
+        caller cannot silently proceed with an empty patient list.
+        """
+        for filepath in self.data_dir.glob("*.phi"):
             try:
-                with open(filepath, 'r') as f:
-                    data = json.load(f)
+                data = decrypt_json(filepath.read_bytes())
                 patient = Patient.from_dict(data)
                 self._patients[patient.id] = patient
-            except Exception:
-                continue
+            except MissingEncryptionKey:
+                raise  # Loud failure — never silently ignore missing key
+            except Exception as exc:
+                _logger.warning("Skipping unreadable patient file %s: %s", filepath.name, exc)
+                continue  # Skip corrupt individual files but keep loading others
     
     def _save_patient(self, patient: Patient):
-        """Save a patient profile to disk."""
-        filepath = self.data_dir / f"{patient.id}.json"
-        with open(filepath, 'w') as f:
-            json.dump(patient.to_dict(), f, indent=2)
+        """Save a patient profile to disk as encrypted .phi file."""
+        filepath = self.data_dir / f"{patient.id}.phi"
+        filepath.write_bytes(encrypt_json(patient.to_dict()))
     
     def create(self, **kwargs) -> Patient:
         """
