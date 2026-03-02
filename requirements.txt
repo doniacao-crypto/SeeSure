@@ -22,3 +22,7 @@ scikit-learn==1.8.0  # For Ridge regression and polynomial features
 # Utilities
 screeninfo==0.8.1  # For multi-monitor support
 reportlab==4.4.9
+
+# PHI Encryption at Rest (HIPAA compliance — Issue #72)
+cryptography==44.0.3
+keyring==25.6.0
