@@ -63,3 +63,26 @@ DEFAULT_SAMPLES_PER_POINT = 30        # Samples to collect per calibration point
 # =============================================================================
 CAMERA_PREVIEW_WIDTH = 360            # Camera preview width in UI
 CAMERA_PREVIEW_HEIGHT = 270           # Camera preview height in UI
+
+# =============================================================================
+# Adaptive Filter Presets (movement-state dependent)
+# =============================================================================
+FILTER_PRESET_FIXATION = {
+    'mincutoff': 1.0,    # Heavy smoothing — stable fixation
+    'beta': 0.01,
+    'dcutoff': 1.0,
+}
+FILTER_PRESET_PURSUIT = {
+    'mincutoff': 5.0,    # Responsive — follow moving target
+    'beta': 0.5,
+    'dcutoff': 1.0,
+}
+FILTER_PRESET_SACCADE = {
+    'mincutoff': 15.0,   # Minimal filtering — fast eye movement
+    'beta': 1.0,
+    'dcutoff': 1.0,
+}
+
+# Velocity thresholds for movement classification (pixels/second)
+MOVEMENT_VELOCITY_PURSUIT_THRESHOLD = 50.0    # Below = fixation, above = pursuit
+MOVEMENT_VELOCITY_SACCADE_THRESHOLD = 300.0   # Above = saccade
