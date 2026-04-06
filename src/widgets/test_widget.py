@@ -88,7 +88,11 @@ class TestWidget(QWidget):
         self._last_capture_time = capture_time
 
         # Get gaze position
-        gaze = self.gaze_estimator.estimate_gaze(eye_data)
+        gaze = self.gaze_estimator.estimate_gaze(
+            eye_data,
+            timestamp=capture_time,
+            is_blink=eye_data.is_blinking,
+        )
         self.current_gaze = gaze
 
         # Record frame with capture timestamp for proper synchronization
