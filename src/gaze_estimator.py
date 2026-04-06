@@ -21,7 +21,7 @@ from sklearn.linear_model import Ridge, RidgeCV
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.pipeline import Pipeline
 from eye_tracker import EyeData
-from filters import OneEuroFilter2D, GazeKalmanFilter, CombinedFilter
+from filters import OneEuroFilter2D, GazeKalmanFilter, CombinedFilter, AdaptiveFilterManager
 
 
 @dataclass
@@ -194,6 +194,7 @@ class GazeEstimator:
     FILTER_ONE_EURO = 'one_euro'
     FILTER_KALMAN = 'kalman'
     FILTER_COMBINED = 'combined'
+    FILTER_ADAPTIVE = 'adaptive'
 
     def __init__(
         self,
@@ -275,10 +276,14 @@ class GazeEstimator:
             kalman_measurement_noise=10.0
         )
 
+        # Adaptive Filter (movement-state aware)
+        self._adaptive_filter = AdaptiveFilterManager(freq=30.0)
+
     def set_filter_mode(self, mode: str):
         """Change the filtering mode."""
         if mode not in [self.FILTER_NONE, self.FILTER_ONE_EURO,
-                        self.FILTER_KALMAN, self.FILTER_COMBINED]:
+                        self.FILTER_KALMAN, self.FILTER_COMBINED,
+                        self.FILTER_ADAPTIVE]:
             raise ValueError(f"Invalid filter mode: {mode}")
         self.filter_mode = mode
         self._reset_filters()
@@ -288,6 +293,7 @@ class GazeEstimator:
         self._one_euro_filter.reset()
         self._kalman_filter.reset()
         self._combined_filter.reset()
+        self._adaptive_filter.reset()
 
     def start_calibration(self, profile_name: str = "default") -> CalibrationProfile:
         """
@@ -623,7 +629,7 @@ class GazeEstimator:
             return None
 
         # Use Kalman filter prediction during blink
-        if self.filter_mode in [self.FILTER_KALMAN, self.FILTER_COMBINED]:
+        if self.filter_mode in [self.FILTER_KALMAN, self.FILTER_COMBINED, self.FILTER_ADAPTIVE]:
             dt = 1.0 / 30.0  # Assume 30 FPS
             if self.filter_mode == self.FILTER_COMBINED:
                 gaze_x, gaze_y = self._combined_filter.predict(dt)
@@ -655,6 +661,12 @@ class GazeEstimator:
 
         elif self.filter_mode == self.FILTER_COMBINED:
             return self._combined_filter.filter(x, y, timestamp)
+
+        elif self.filter_mode == self.FILTER_ADAPTIVE:
+            # Use Kalman for velocity estimation, adaptive 1-Euro for output
+            kx, ky = self._kalman_filter.update(x, y, timestamp)
+            velocity = self._kalman_filter.velocity
+            return self._adaptive_filter.filter(x, y, velocity=velocity, timestamp=timestamp)
 
         return (x, y)
 
@@ -711,6 +723,10 @@ class GazeEstimator:
         elif self.filter_mode == self.FILTER_KALMAN:
             return self._kalman_filter.is_saccade
         return False
+
+    def reset_filters(self):
+        """Public API to reset all filter states (e.g., between test trials)."""
+        self._reset_filters()
 
     def save_profile(self, filepath: str) -> bool:
         """
