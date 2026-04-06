@@ -67,8 +67,9 @@ class CalibrationWidget(QWidget):
         if width <= 0 or height <= 0:
             return
 
-        margin_x = int(width * 0.1)
-        margin_y = int(height * 0.1)
+        from constants import DEFAULT_CALIBRATION_MARGIN
+        margin_x = int(width * DEFAULT_CALIBRATION_MARGIN)
+        margin_y = int(height * DEFAULT_CALIBRATION_MARGIN)
 
         for row in range(self.grid_size):
             for col in range(self.grid_size):

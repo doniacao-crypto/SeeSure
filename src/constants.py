@@ -57,6 +57,8 @@ DEFAULT_TARGET_SIZE = 20              # Default target dot size (pixels)
 DEFAULT_TEST_SPEED = 0.5              # Default target speed multiplier
 DEFAULT_CALIBRATION_GRID_SIZE = 3     # 3x3 calibration grid
 DEFAULT_SAMPLES_PER_POINT = 30        # Samples to collect per calibration point
+DEFAULT_CALIBRATION_MARGIN = 0.05     # Calibration grid margin (5%, close to test 3%)
+DEFAULT_CALIBRATION_GRID_SIZE_EXTENDED = 4  # 4x4 = 16 points for better coverage
 
 # =============================================================================
 # UI Constants
