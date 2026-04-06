@@ -63,6 +63,8 @@ class SaccadeWidget(QWidget):
         config.screen_height_px = self.height()
         
         self._test = SaccadeTest(config)
+        if self._gaze_estimator:
+            self._test.on_trial_start = self._gaze_estimator.reset_filters
         self._test.start()
         self.update()
     
