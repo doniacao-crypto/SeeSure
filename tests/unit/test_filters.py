@@ -194,20 +194,69 @@ class TestFilterIntegration:
         """Compare smoothing behavior of 1-Euro vs Kalman filters."""
         oef = OneEuroFilter(mincutoff=1.0, beta=0.007)
         kf = GazeKalmanFilter()
-        
+
         np.random.seed(42)
-        
+
         # Generate noisy signal
         true_values = [i * 2.0 for i in range(20)]
         noisy_values = [v + np.random.normal(0, 3) for v in true_values]
-        
+
         oef_results = [oef.filter(v) for v in noisy_values]
         kf_results = [kf.update(v, 0.0)[0] for v in noisy_values]
-        
+
         # Both should reduce noise (or maintain similar variance)
         input_var = np.var(noisy_values)
         oef_var = np.var(oef_results)
         kf_var = np.var(kf_results)
-        
+
         # 1-Euro should reduce variance
         assert oef_var < input_var
+
+
+class TestAdaptiveFilterManager:
+    """Tests for movement-state adaptive filtering."""
+
+    def test_initialization_defaults_to_fixation(self):
+        from filters import AdaptiveFilterManager
+        mgr = AdaptiveFilterManager()
+        assert mgr.current_state == 'fixation'
+
+    def test_classify_fixation(self):
+        from filters import AdaptiveFilterManager
+        mgr = AdaptiveFilterManager()
+        state = mgr._classify_movement(velocity=20.0)
+        assert state == 'fixation'
+
+    def test_classify_pursuit(self):
+        from filters import AdaptiveFilterManager
+        mgr = AdaptiveFilterManager()
+        state = mgr._classify_movement(velocity=150.0)
+        assert state == 'pursuit'
+
+    def test_classify_saccade(self):
+        from filters import AdaptiveFilterManager
+        mgr = AdaptiveFilterManager()
+        state = mgr._classify_movement(velocity=400.0)
+        assert state == 'saccade'
+
+    def test_filter_adapts_params_on_state_change(self):
+        from filters import AdaptiveFilterManager
+        mgr = AdaptiveFilterManager()
+        mgr.filter(100.0, 100.0, velocity=20.0)
+        assert mgr.current_state == 'fixation'
+        mgr.filter(120.0, 100.0, velocity=150.0)
+        assert mgr.current_state == 'pursuit'
+
+    def test_filter_returns_coordinates(self):
+        from filters import AdaptiveFilterManager
+        mgr = AdaptiveFilterManager()
+        x, y = mgr.filter(100.0, 200.0, velocity=20.0)
+        assert isinstance(x, float)
+        assert isinstance(y, float)
+
+    def test_reset_clears_state(self):
+        from filters import AdaptiveFilterManager
+        mgr = AdaptiveFilterManager()
+        mgr.filter(100.0, 200.0, velocity=20.0)
+        mgr.reset()
+        assert mgr.current_state == 'fixation'
