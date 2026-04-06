@@ -56,7 +56,7 @@ class MainWindow(QMainWindow):
 
         # Core components
         self.eye_tracker = EyeTracker()
-        self.gaze_estimator = GazeEstimator()
+        self.gaze_estimator = GazeEstimator(filter_mode='adaptive')
         self.session_history = SessionHistoryManager()
         self.patient_manager = PatientManager()
         self.current_patient: Optional[Patient] = None
