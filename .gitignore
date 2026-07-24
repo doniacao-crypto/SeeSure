@@ -85,3 +85,6 @@ secrets/
 .worktrees/
 .security-key
 logs/security/
+
+# Local-only working docs (not shared)
+docs/local/

@@ -2,6 +2,29 @@
 
 Enhanced Kiro-style Spec Driven Development with WebSearch integration, knowledge management, and error documentation.
 
+## Project Scaffold
+
+| Field | Value |
+|-------|-------|
+| Tier | Moderate |
+| Setup date | 2026-07-23 |
+| Last check-in | 2026-07-23 |
+
+## Documentation Map
+
+| Concept | Path | Status |
+|---------|------|--------|
+| Scope (in/out/uncertain) | SCOPE.md | Active |
+| Domain glossary | CONTEXT.md | Active |
+| External dependencies | DEPENDENCIES.md | Active |
+| Architecture decisions | docs/adr/ | Active (0001–0005) |
+| **Tracking backlog (work list)** | docs/BACKLOG.md | Active |
+| Clinical sign-off register | docs/clinical/sign-off-register.md | Awaiting Clinical Lead |
+| Working concerns (local) | docs/local/CONCERNS.md | Active, gitignored |
+
+**Start each session at `docs/BACKLOG.md`** — it is the single ordered work list
+(P0 trust the measurement → P1 clinical trust → P2 pilot → P3 platform).
+
 ## Project Context
 
 ### Paths

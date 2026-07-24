@@ -3,8 +3,44 @@
 ## Quick Context
 
 - **What:** Clinical eye movement assessment application (PyQt6 + MediaPipe)
-- **Status:** All roadmap phases complete
-- **Last worked on:** 2026-02-05
+- **Status:** Features built; **now foundation-first** — the desktop app is a validation
+  vehicle for a pilot, not the shipping product. See SCOPE.md + docs/adr/.
+- **Last worked on:** 2026-07-23 (setup + grill session)
+
+---
+
+## ▶ NEXT SESSION START HERE (2026-07-23)
+
+**Read first:** `docs/BACKLOG.md` (the ordered work list) → `CLAUDE.md` Documentation Map.
+
+**What happened this session:** ran `/setup` Phase 0 + `/grill-with-docs`. Reframed the
+project and recorded 5 ADRs. Key reframes:
+- **Product ≠ current app.** End-state = website + iOS/Android/macOS/Windows, all data
+  server-hosted. Current PyQt6 app = pilot instrument only. Architecture = **hybrid**
+  (ADR 0001): one TS+MediaPipe web tracking client wrapped to all targets; Python server
+  reuses today's analysis modules (metrics/protocols/reports/norms) over gaze-sample
+  streams (NOT video — saccade latency forbids frame round-trips).
+- **Two users:** clinician (prescribes/diagnoses) + patient (trains). Clinician = an
+  optometrist, clinic owner, product originator, now the **Clinical Lead / sign-off
+  authority** (ADR 0003).
+- **Nothing clinical is validated yet.** Norms in `normative_data.py` have citations that
+  were generated with the numbers — none verified (ADR 0002). Interpretation strings are
+  dev-authored. All gated to illustrative-only until the sign-off register is completed.
+- **Accuracy** target provisional ≤1.5°/≤2.5° at 60cm (ADR 0004). Clinical Lead owns a
+  commercial reference tracker — **broken**; repairing it (A-4a) is the top P0 unlock.
+- **PHI** must satisfy HIPAA+GDPR+PIPL superset when hosted (ADR 0005). Pilot stays local.
+
+**Critical path:** repair her tracker (A-4a) → validate accuracy (A-5) → Clinical Lead
+signs the register (A-6) → run pilot (P2) → build platform (P3).
+
+**Owed but not done:** A-2 (add "not clinically validated" caveat in UI/PDF — quick),
+A-1 (literature-verify the norms — research task). Both queued in BACKLOG P1.
+
+**Bugs found:** A-19 PHI delete uses `.json` not `.phi` (may leave PHI on disk);
+A-7 two conflicting pursuit-gain thresholds; A-8 missing BCEA norms for child/adolescent.
+
+**Note:** current git branch is `fix/gaze-calibration-sample-usage`; these docs are
+setup/planning, not part of that fix. Nothing committed — commit at your discretion.
 
 ## Decisions
 
