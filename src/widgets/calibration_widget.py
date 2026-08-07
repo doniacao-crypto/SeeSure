@@ -30,8 +30,19 @@ class CalibrationWidget(QWidget):
         self.grid_size = 3
         self.current_point_index = 0
         self.calibration_points = []
-        self.samples_per_point = 45  # Frames to average per point
+        self.samples_per_point = 20  # Frames per (point, pose) cell
         self.current_samples = 0
+
+        # The grid is walked once per head pose. Without this spread the pitch/yaw coefficients are
+        # fitted to landmark noise, and gaze collapses as soon as the subject turns their head --
+        # a 5 deg turn was enough to throw the estimate to the screen edge. Holding a pose while
+        # still fixating the dot is what makes head compensation learnable.
+        self.head_poses = [
+            ("Look straight ahead", "Head centred, facing the screen"),
+            ("Turn your head slightly LEFT", "Keep looking at the dot with your eyes"),
+            ("Turn your head slightly RIGHT", "Keep looking at the dot with your eyes"),
+        ]
+        self.current_pose_index = 0
 
         self.is_calibrating = False
         self.countdown = 0
@@ -97,6 +108,7 @@ class CalibrationWidget(QWidget):
         self.gaze_estimator.screen_height = self.height()
 
         self.current_point_index = 0
+        self.current_pose_index = 0
         self.current_samples = 0
         self._settling = False
         self._settling_start_time = 0.0
@@ -140,7 +152,14 @@ class CalibrationWidget(QWidget):
             self.countdown = 2  # Short countdown between points
 
             if self.current_point_index >= len(self.calibration_points):
-                self._finish_calibration()
+                # Grid done for this head pose -- move to the next pose, or finish.
+                self.current_pose_index += 1
+                if self.current_pose_index >= len(self.head_poses):
+                    self._finish_calibration()
+                else:
+                    self.current_point_index = 0
+                    self.countdown = 5  # Longer pause: the subject must change head pose
+                    self.timer.start(1000)
             else:
                 self.timer.start(1000)
 
@@ -164,13 +183,33 @@ class CalibrationWidget(QWidget):
 
         if self.gaze_estimator.finish_calibration():
             quality = self.gaze_estimator.get_calibration_quality()
-            QMessageBox.information(
-                self, "Calibration Complete",
-                f"Calibration successful!\n\n"
-                f"Quality Score: {quality['quality']*100:.1f}%\n"
-                f"Average Error: {quality['avg_error_px']:.1f} pixels\n"
-                f"Points Used: {quality['points']}"
+
+            # Report the held-out error, not avg_error_px. avg_error_px scores the model on the rows
+            # it was fitted to, so it looks near-perfect even when the model generalises terribly.
+            message = (
+                f"Calibration complete.\n\n"
+                f"Held-out error: {quality['cv_error_px']:.1f} px "
+                f"(error at screen locations not used for fitting)\n"
+                f"Training-fit error: {quality['avg_error_px']:.1f} px "
+                f"(optimistic - same rows the model was fitted to)\n\n"
+                f"Head yaw spread: {quality['head_yaw_spread_deg']:.1f} deg\n"
+                f"Head pitch spread: {quality['head_pitch_spread_deg']:.1f} deg\n"
+                f"Samples: {quality['training_rows']} rows over {quality['points']} points"
             )
+
+            if not quality['head_pose_ok']:
+                QMessageBox.warning(
+                    self, "Calibration Complete - Head Pose Warning",
+                    message + (
+                        "\n\nWARNING: head pose barely varied during calibration, so the model "
+                        "could not learn head compensation. Gaze will degrade sharply as soon as "
+                        "the subject turns their head. Redo the calibration and hold the requested "
+                        "head poses."
+                    )
+                )
+            else:
+                QMessageBox.information(self, "Calibration Complete", message)
+
             self.calibration_complete.emit()
         else:
             QMessageBox.warning(
@@ -230,10 +269,26 @@ class CalibrationWidget(QWidget):
                 painter.setPen(QPen(QColor(0, 255, 0), 4))
                 painter.drawArc(x - 35, y - 35, 70, 70, 90 * 16, int(-progress * 360 * 16))
 
+        # Draw the head-pose instruction for this round, centred and prominent: the subject has to
+        # actually change head pose between rounds or the calibration learns no head compensation.
+        if self.current_pose_index < len(self.head_poses):
+            title, subtitle = self.head_poses[self.current_pose_index]
+            painter.setPen(QColor(255, 210, 80))
+            painter.setFont(QFont("Arial", 26, QFont.Weight.Bold))
+            painter.drawText(0, 70, self.width(), 40,
+                             Qt.AlignmentFlag.AlignHCenter, title)
+            painter.setPen(QColor(200, 200, 200))
+            painter.setFont(QFont("Arial", 15))
+            painter.drawText(0, 112, self.width(), 28,
+                             Qt.AlignmentFlag.AlignHCenter, subtitle)
+
         # Draw status text
         painter.setPen(QColor(255, 255, 255))
         painter.setFont(QFont("Arial", 16))
-        status = f"Point {self.current_point_index + 1} of {len(self.calibration_points)}"
+        status = (
+            f"Pose {self.current_pose_index + 1} of {len(self.head_poses)}  |  "
+            f"Point {self.current_point_index + 1} of {len(self.calibration_points)}"
+        )
         if self.countdown > 0:
             status += f" - Look at the point in {self.countdown}..."
         else:

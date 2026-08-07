@@ -195,6 +195,14 @@ class GazeEstimator:
     FILTER_KALMAN = 'kalman'
     FILTER_COMBINED = 'combined'
 
+    # Fixed physical scale for the head-pose features, in degrees. Used as a floor so that a still
+    # subject's landmark noise can never become the unit of measurement (see finish_calibration).
+    HEAD_POSE_SCALE_DEG = 5.0
+
+    # Calibration must span at least this much head-pose spread (std, degrees) for the model to
+    # learn head compensation at all. Below it, pitch/yaw coefficients are unidentifiable.
+    MIN_HEAD_POSE_SPREAD_DEG = 3.0
+
     def __init__(
         self,
         screen_width: int = 1920,
@@ -224,6 +232,12 @@ class GazeEstimator:
         self._scaler: Optional[StandardScaler] = None
         self._model_x: Optional[Ridge] = None
         self._model_y: Optional[Ridge] = None
+
+        # Retained training data, for leave-one-point-out cross validation
+        self._train_features: Optional[np.ndarray] = None
+        self._train_target_x: Optional[np.ndarray] = None
+        self._train_target_y: Optional[np.ndarray] = None
+        self._cv_groups: Optional[np.ndarray] = None
 
         # Reference head pose (recorded during calibration)
         self._ref_head_pitch = 0.0
@@ -454,15 +468,17 @@ class GazeEstimator:
 
         # Fit linear relationship: error = factor * head_delta
         # Using simple linear regression
+        # Lower bound is 0, not 5: a floor of 5 px/deg made "no compensation needed" unrepresentable
+        # and forced a spurious correction whenever the residual slope was genuinely flat.
         if np.std(yaw_delta) > 0.1:
             # Negative because looking right (positive yaw) should decrease x
             self._yaw_factor = -np.sum(error_x * yaw_delta) / np.sum(yaw_delta**2)
-            self._yaw_factor = np.clip(self._yaw_factor, 5.0, 50.0)
+            self._yaw_factor = float(np.clip(self._yaw_factor, 0.0, 50.0))
 
         if np.std(pitch_delta) > 0.1:
             # Positive because looking down (positive pitch) should increase y
             self._pitch_factor = np.sum(error_y * pitch_delta) / np.sum(pitch_delta**2)
-            self._pitch_factor = np.clip(self._pitch_factor, 5.0, 50.0)
+            self._pitch_factor = float(np.clip(self._pitch_factor, 0.0, 50.0))
 
         # Store in profile
         if self.calibration_profile:
@@ -483,24 +499,49 @@ class GazeEstimator:
             print(f"Not enough calibration points: {len(self.calibration_profile.points)} (need at least 5)")
             return False
 
-        # Build feature vectors from calibration points
+        # Build feature vectors from calibration points.
+        # Train on every raw sample, not one averaged row per point: a degree-2 polynomial over
+        # 4 features expands to 15 columns, so 9 averaged rows leave the fit underdetermined.
         features_raw = []
         target_x = []
         target_y = []
         head_pitches = []
         head_yaws = []
+        # Group rows by SCREEN LOCATION, not by point index. Pose-varied calibration visits the
+        # same dot at several head poses, so grouping by index would leave the same location in
+        # both folds and leak.
+        groups = []
+        group_ids: Dict[Tuple[int, int], int] = {}
 
         for point in self.calibration_profile.points:
-            # Average iris position (combining both eyes)
-            avg_iris_x = (point.left_iris[0] + point.right_iris[0]) / 2
-            avg_iris_y = (point.left_iris[1] + point.right_iris[1]) / 2
+            location = (point.screen_x, point.screen_y)
+            if location not in group_ids:
+                group_ids[location] = len(group_ids)
+            point_idx = group_ids[location]
+            rows = point.samples if point.samples else [
+                CalibrationSample(
+                    left_iris=point.left_iris,
+                    right_iris=point.right_iris,
+                    head_pitch=point.head_pitch,
+                    head_yaw=point.head_yaw,
+                    head_roll=point.head_roll,
+                    timestamp=point.timestamp,
+                )
+            ]
 
-            features_raw.append([avg_iris_x, avg_iris_y, point.head_pitch, point.head_yaw])
-            target_x.append(point.screen_x)
-            target_y.append(point.screen_y)
-            head_pitches.append(point.head_pitch)
-            head_yaws.append(point.head_yaw)
+            for sample in rows:
+                # Average iris position (combining both eyes)
+                avg_iris_x = (sample.left_iris[0] + sample.right_iris[0]) / 2
+                avg_iris_y = (sample.left_iris[1] + sample.right_iris[1]) / 2
 
+                features_raw.append([avg_iris_x, avg_iris_y, sample.head_pitch, sample.head_yaw])
+                target_x.append(point.screen_x)
+                target_y.append(point.screen_y)
+                head_pitches.append(sample.head_pitch)
+                head_yaws.append(sample.head_yaw)
+                groups.append(point_idx)
+
+        self._cv_groups = np.array(groups)
         features_raw = np.array(features_raw)
         target_x = np.array(target_x)
         target_y = np.array(target_y)
@@ -513,7 +554,17 @@ class GazeEstimator:
 
         # Scale features first to prevent numerical overflow in polynomial expansion
         self._scaler = StandardScaler()
-        features_scaled = self._scaler.fit_transform(features_raw)
+        self._scaler.fit(features_raw)
+
+        # Floor the head-pose scales. If the subject holds still through calibration, the observed
+        # spread of pitch/yaw is solvePnP landmark noise (~0.3 deg), and StandardScaler would divide
+        # by it -- turning a real 12 deg head turn at test time into a ~40 sigma input that the
+        # degree-2 expansion then squares. Dividing by a fixed physical scale instead keeps head pose
+        # in sane units no matter how still the subject sat.
+        self._scaler.scale_[2] = max(self._scaler.scale_[2], self.HEAD_POSE_SCALE_DEG)
+        self._scaler.scale_[3] = max(self._scaler.scale_[3], self.HEAD_POSE_SCALE_DEG)
+
+        features_scaled = self._scaler.transform(features_raw)
 
         # Handle edge case where scaler produces inf/nan (zero variance in a feature)
         # Replace any inf/nan with 0 (centered value)
@@ -528,6 +579,11 @@ class GazeEstimator:
 
         # Ensure no inf/nan in polynomial features
         features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Retain the design matrix so calibration quality can report a held-out error
+        self._train_features = features
+        self._train_target_x = target_x
+        self._train_target_y = target_y
 
         # Build Ridge regression models
         # Alpha (regularization strength) prevents overfitting
@@ -806,6 +862,11 @@ class GazeEstimator:
 
         avg_error = total_error / num_points if num_points > 0 else float('inf')
 
+        # Held-out error: leave-one-calibration-point-out. Samples from the same dot are near
+        # duplicates, so a random split would leak and flatter the model; holding out a whole
+        # point measures what we actually care about — generalizing to an unseen screen location.
+        cv_error = self._leave_one_point_out_error()
+
         # Quality score
         error_quality = max(0, 1 - avg_error / 100)
         samples_quality = sum(1 for p in self.calibration_profile.points if len(p.samples) >= 5) / num_points
@@ -817,11 +878,89 @@ class GazeEstimator:
             samples_quality * 0.1
         )
 
+        # How much head movement did calibration actually see? If the subject sat still, the head
+        # compensation terms are fitted to noise and gaze collapses the moment they turn their head.
+        pitch_spread, yaw_spread = self.get_head_pose_spread()
+        head_pose_ok = (
+            max(pitch_spread, yaw_spread) >= self.MIN_HEAD_POSE_SPREAD_DEG
+        )
+
         return {
             "quality": overall_quality,
             "points": num_points,
             "coverage": coverage,
             "avg_error_px": avg_error,
+            "cv_error_px": cv_error,
+            "training_rows": int(len(self._train_features)) if self._train_features is not None else 0,
+            "head_pitch_spread_deg": pitch_spread,
+            "head_yaw_spread_deg": yaw_spread,
+            "head_pose_ok": head_pose_ok,
             "error_quality": error_quality,
             "samples_quality": samples_quality
         }
+
+    def get_head_pose_spread(self) -> Tuple[float, float]:
+        """
+        Standard deviation of head pitch and yaw across all calibration samples, in degrees.
+
+        A still head yields ~0.3 deg here, which is solvePnP landmark noise rather than signal: the
+        model then cannot learn what head rotation does to gaze, and any real head turn during a
+        session throws the estimate to the screen edge. Vary head pose during calibration.
+        """
+        if self.calibration_profile is None:
+            return (0.0, 0.0)
+
+        pitches = []
+        yaws = []
+        for point in self.calibration_profile.points:
+            rows = point.samples or [point]
+            for row in rows:
+                pitches.append(row.head_pitch)
+                yaws.append(row.head_yaw)
+
+        if len(pitches) < 2:
+            return (0.0, 0.0)
+
+        return (float(np.std(pitches)), float(np.std(yaws)))
+
+    def _leave_one_point_out_error(self) -> float:
+        """
+        Mean held-out error in pixels, holding out one calibration point at a time.
+
+        Unlike avg_error_px (which scores the model on the rows it was fitted to), this reflects
+        accuracy at a screen location the model never saw, so it can detect overfitting.
+        """
+        if (self._train_features is None or self._cv_groups is None
+                or self._train_target_x is None or self._train_target_y is None):
+            return float('nan')
+
+        unique_groups = np.unique(self._cv_groups)
+        if len(unique_groups) < 3:
+            return float('nan')
+
+        alphas = [0.01, 0.1, 1.0, 10.0, 100.0]
+        errors = []
+
+        for held_out in unique_groups:
+            test_mask = self._cv_groups == held_out
+            train_mask = ~test_mask
+            if not train_mask.any() or not test_mask.any():
+                continue
+
+            try:
+                fold_x = RidgeCV(alphas=alphas)
+                fold_x.fit(self._train_features[train_mask], self._train_target_x[train_mask])
+                fold_y = RidgeCV(alphas=alphas)
+                fold_y.fit(self._train_features[train_mask], self._train_target_y[train_mask])
+
+                pred_x = fold_x.predict(self._train_features[test_mask])
+                pred_y = fold_y.predict(self._train_features[test_mask])
+
+                errors.extend(np.sqrt(
+                    (pred_x - self._train_target_x[test_mask]) ** 2
+                    + (pred_y - self._train_target_y[test_mask]) ** 2
+                ))
+            except Exception:
+                continue
+
+        return float(np.mean(errors)) if errors else float('nan')
