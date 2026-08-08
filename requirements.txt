@@ -24,5 +24,5 @@ screeninfo==0.8.1  # For multi-monitor support
 reportlab==4.4.9
 
 # PHI Encryption at Rest (HIPAA compliance — Issue #72)
-cryptography==44.0.3
+cryptography==50.0.0
 keyring==25.6.0
