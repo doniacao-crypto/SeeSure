@@ -8,16 +8,16 @@
 # Computer Vision & ML
 opencv-python==4.12.0.88
 mediapipe==1.0.0
-numpy==2.2.6
+numpy==2.5.1
 
 # GUI
-PyQt6==6.10.1
+PyQt6==6.11.0
 
 # Data Analysis & Visualization
 pandas==2.3.3
-matplotlib==3.10.8
-scipy==1.16.3
-scikit-learn==1.8.0  # For Ridge regression and polynomial features
+matplotlib==3.11.1
+scipy==1.18.0
+scikit-learn==1.9.0  # For Ridge regression and polynomial features
 
 # Utilities
 screeninfo==0.8.1  # For multi-monitor support
@@ -25,4 +25,4 @@ reportlab==5.0.0
 
 # PHI Encryption at Rest (HIPAA compliance — Issue #72)
 cryptography==50.0.0
-keyring==25.6.0
+keyring==25.7.0
