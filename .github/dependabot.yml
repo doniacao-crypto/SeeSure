@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      security-deps:
+        applies-to: "security-updates"
+        update-types: ["patch", "minor"]
+      version-deps:
+        applies-to: "version-updates"
+        update-types: ["patch", "minor"]
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      security-deps:
+        applies-to: "security-updates"
+        update-types: ["patch", "minor"]
+      version-deps:
+        applies-to: "version-updates"
+        update-types: ["patch", "minor"]
