@@ -6,7 +6,7 @@
 # src/eye_tracker.py if the MediaPipe model changes.
 
 # Computer Vision & ML
-opencv-python==4.12.0.88
+opencv-python==4.14.0.94
 mediapipe==1.0.0
 numpy==2.5.1
 
