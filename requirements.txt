@@ -8,7 +8,7 @@
 # Computer Vision & ML
 opencv-python==4.14.0.94
 mediapipe==1.0.0
-numpy==2.5.1
+numpy==2.5.2
 
 # GUI
 PyQt6==6.11.0
