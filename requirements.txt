@@ -8,7 +8,7 @@
 # Computer Vision & ML
 opencv-python==4.14.0.94
 mediapipe==1.0.1
-numpy==2.5.2
+numpy==2.5.3
 
 # GUI
 PyQt6==6.11.0
@@ -17,7 +17,7 @@ PyQt6==6.11.0
 pandas==2.3.3
 matplotlib==3.11.1
 scipy==1.18.1
-scikit-learn==1.9.0  # For Ridge regression and polynomial features
+scikit-learn==1.9.1  # For Ridge regression and polynomial features
 
 # Utilities
 screeninfo==0.8.1  # For multi-monitor support
