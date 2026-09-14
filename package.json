@@ -43,7 +43,7 @@
   "author": "iBetter.ai",
   "license": "MIT",
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.63.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.19.43",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
