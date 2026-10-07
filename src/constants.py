@@ -57,9 +57,34 @@ DEFAULT_TARGET_SIZE = 20              # Default target dot size (pixels)
 DEFAULT_TEST_SPEED = 0.5              # Default target speed multiplier
 DEFAULT_CALIBRATION_GRID_SIZE = 3     # 3x3 calibration grid
 DEFAULT_SAMPLES_PER_POINT = 30        # Samples to collect per calibration point
+DEFAULT_CALIBRATION_MARGIN = 0.05     # Calibration grid margin (5%, close to test 3%)
+DEFAULT_CALIBRATION_GRID_SIZE_EXTENDED = 4  # 4x4 = 16 points for better coverage
 
 # =============================================================================
 # UI Constants
 # =============================================================================
 CAMERA_PREVIEW_WIDTH = 360            # Camera preview width in UI
 CAMERA_PREVIEW_HEIGHT = 270           # Camera preview height in UI
+
+# =============================================================================
+# Adaptive Filter Presets (movement-state dependent)
+# =============================================================================
+FILTER_PRESET_FIXATION = {
+    'mincutoff': 1.0,    # Heavy smoothing — stable fixation
+    'beta': 0.01,
+    'dcutoff': 1.0,
+}
+FILTER_PRESET_PURSUIT = {
+    'mincutoff': 5.0,    # Responsive — follow moving target
+    'beta': 0.5,
+    'dcutoff': 1.0,
+}
+FILTER_PRESET_SACCADE = {
+    'mincutoff': 15.0,   # Minimal filtering — fast eye movement
+    'beta': 1.0,
+    'dcutoff': 1.0,
+}
+
+# Velocity thresholds for movement classification (pixels/second)
+MOVEMENT_VELOCITY_PURSUIT_THRESHOLD = 50.0    # Below = fixation, above = pursuit
+MOVEMENT_VELOCITY_SACCADE_THRESHOLD = 300.0   # Above = saccade

@@ -191,7 +191,8 @@ class SaccadeTest:
         
         self.is_running = False
         self._collecting_response = False
-        
+        self.on_trial_start = None  # Optional callback for filter reset
+
     def _generate_trials(self):
         """Generate the sequence of trials."""
         directions = ["left", "right"]
@@ -235,6 +236,9 @@ class SaccadeTest:
     
     def _start_trial(self):
         """Start a new trial."""
+        if self.on_trial_start:
+            self.on_trial_start()
+
         if self._current_trial_index >= len(self._trial_configs):
             self.stop()
             return

@@ -459,3 +459,93 @@ class CombinedFilter:
         """Reset all filters."""
         self.kalman.reset()
         self.one_euro.reset()
+
+
+class AdaptiveFilterManager:
+    """
+    Movement-state-aware filter that adapts 1-Euro parameters
+    based on whether the eye is in fixation, pursuit, or saccade.
+
+    This solves the core accuracy problem: filters tuned for fixation
+    introduce catastrophic lag during dynamic tracking.
+    """
+
+    def __init__(
+        self,
+        freq: float = 30.0,
+        pursuit_threshold: float = 50.0,
+        saccade_threshold: float = 300.0,
+    ):
+        from constants import (
+            FILTER_PRESET_FIXATION,
+            FILTER_PRESET_PURSUIT,
+            FILTER_PRESET_SACCADE,
+        )
+        self.freq = freq
+        self.pursuit_threshold = pursuit_threshold
+        self.saccade_threshold = saccade_threshold
+
+        self._presets = {
+            'fixation': FILTER_PRESET_FIXATION,
+            'pursuit': FILTER_PRESET_PURSUIT,
+            'saccade': FILTER_PRESET_SACCADE,
+        }
+
+        # Create the underlying 1-Euro filter with fixation defaults
+        self._filter = OneEuroFilter2D(
+            freq=freq,
+            mincutoff=self._presets['fixation']['mincutoff'],
+            beta=self._presets['fixation']['beta'],
+            dcutoff=self._presets['fixation']['dcutoff'],
+        )
+        self.current_state = 'fixation'
+
+    def _classify_movement(self, velocity: float) -> str:
+        """Classify current movement state based on velocity."""
+        if velocity >= self.saccade_threshold:
+            return 'saccade'
+        elif velocity >= self.pursuit_threshold:
+            return 'pursuit'
+        return 'fixation'
+
+    def _apply_preset(self, state: str):
+        """Update 1-Euro filter parameters for the given state."""
+        preset = self._presets[state]
+        self._filter._filter_x.mincutoff = preset['mincutoff']
+        self._filter._filter_x.beta = preset['beta']
+        self._filter._filter_x.dcutoff = preset['dcutoff']
+        self._filter._filter_y.mincutoff = preset['mincutoff']
+        self._filter._filter_y.beta = preset['beta']
+        self._filter._filter_y.dcutoff = preset['dcutoff']
+
+    def filter(
+        self,
+        x: float,
+        y: float,
+        velocity: float = 0.0,
+        timestamp: Optional[float] = None,
+    ) -> Tuple[float, float]:
+        """
+        Filter gaze coordinates with movement-adaptive parameters.
+
+        Args:
+            x: Raw gaze X coordinate
+            y: Raw gaze Y coordinate
+            velocity: Current gaze velocity (pixels/second)
+            timestamp: Optional timestamp in seconds
+
+        Returns:
+            Filtered (x, y) coordinates
+        """
+        new_state = self._classify_movement(velocity)
+        if new_state != self.current_state:
+            self._apply_preset(new_state)
+            self.current_state = new_state
+
+        return self._filter.filter(x, y, timestamp)
+
+    def reset(self):
+        """Reset filter state and return to fixation mode."""
+        self._filter.reset()
+        self.current_state = 'fixation'
+        self._apply_preset('fixation')

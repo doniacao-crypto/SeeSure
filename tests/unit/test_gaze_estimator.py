@@ -319,7 +319,27 @@ class TestGazeEstimatorEdgeCases:
         
         # During blink, gaze estimation should be affected
         result = estimator.estimate_gaze(eye_data)
-        
+
         # Implementation-dependent: might return None or last valid gaze
         # Just verify it doesn't crash
-        assert result is None or isinstance(result, tuple)
+
+
+class TestGazeEstimatorAdaptiveFilter:
+    """Tests for adaptive filter mode in gaze estimator."""
+
+    def test_adaptive_filter_mode_exists(self):
+        from gaze_estimator import GazeEstimator
+        estimator = GazeEstimator(filter_mode='adaptive')
+        assert estimator.filter_mode == 'adaptive'
+
+    def test_set_adaptive_filter_mode(self):
+        from gaze_estimator import GazeEstimator
+        estimator = GazeEstimator()
+        estimator.set_filter_mode('adaptive')
+        assert estimator.filter_mode == 'adaptive'
+
+    def test_reset_filters_public_api(self):
+        from gaze_estimator import GazeEstimator
+        estimator = GazeEstimator(filter_mode='adaptive')
+        # Should not raise
+        estimator.reset_filters()

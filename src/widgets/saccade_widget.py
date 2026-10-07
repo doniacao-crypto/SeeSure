@@ -63,6 +63,8 @@ class SaccadeWidget(QWidget):
         config.screen_height_px = self.height()
         
         self._test = SaccadeTest(config)
+        if self._gaze_estimator:
+            self._test.on_trial_start = self._gaze_estimator.reset_filters
         self._test.start()
         self.update()
     
@@ -89,7 +91,11 @@ class SaccadeWidget(QWidget):
         # Get gaze position from estimator
         gaze_x, gaze_y = None, None
         if self._gaze_estimator and self._gaze_estimator.is_calibrated:
-            result = self._gaze_estimator.estimate_gaze(eye_data)
+            result = self._gaze_estimator.estimate_gaze(
+                eye_data,
+                timestamp=time.time(),
+                is_blink=eye_data.is_blinking,
+            )
             if result is not None:
                 gaze_x, gaze_y = result
         
