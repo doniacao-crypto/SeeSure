@@ -16,6 +16,12 @@ import os
 from datetime import datetime
 
 from metrics import ScreenConfig, MetricsCalculator, PursuitMetrics
+from constants import DEFAULT_VIEWING_DISTANCE_CM, NOMINAL_SCREEN_HEIGHT_CM
+
+# Nominal interpupillary distance the degree-domain metrics are implicitly calibrated against.
+# Adult mean is ~63 mm; a subject's real IPD scales how far the iris travels per degree of gaze,
+# so degree error is corrected by REFERENCE_IPD_MM / actual_ipd_mm.
+REFERENCE_IPD_MM = 63.0
 
 
 class TargetPattern(Enum):
@@ -66,11 +72,16 @@ class TestResult:
     frames: List[TrackingFrame] = field(default_factory=list)
 
     # Legacy metrics (0-100 scale for backward compatibility)
-    accuracy_score: float = 0.0
+    accuracy_score: float = 0.0      # Direction match: how often the gaze moved with the target
     avg_distance_px: float = 0.0
-    tracking_ratio: float = 0.0  # Frames with successful tracking
+    tracking_ratio: float = 0.0      # Tracking rate: % of frames that produced a usable gaze
+    speed_match_score: float = 0.0   # How closely the gaze speed matched the target speed
     smooth_score: float = 0.0    # How smooth vs jerky the tracking was (0-100)
     lag_ms: float = 0.0          # Average lag behind target
+    pupil_distance_mm: float = 0.0  # Subject IPD used to correct degree-domain metrics
+    head_stillness_score: float = 0.0  # 100 = head held still throughout
+    uncalibrated: bool = False  # Scored without calibration: results are not meaningful
+    target_angular_speed_deg_s: float = 0.0  # Peak demand placed on the pursuit system
 
     # Clinical metrics (new)
     pursuit_gain: float = 0.0              # Eye velocity / Target velocity
@@ -79,58 +90,151 @@ class TestResult:
     catch_up_saccade_count: int = 0        # Number of corrective saccades
     clinical_metrics: Optional[PursuitMetrics] = None
 
-    def compute_metrics(self, screen_diagonal: float, screen_config: Optional[ScreenConfig] = None):
+    def compute_metrics(self, screen_diagonal: float, screen_config: Optional[ScreenConfig] = None, pupil_distance_mm: float = 0.0):
         """
         Compute all metrics from the recorded frames.
 
         Args:
-            screen_diagonal: Screen diagonal in pixels (for legacy accuracy score)
             screen_config: Optional ScreenConfig for clinical metrics calculation
+            pupil_distance_mm: Patient's IPD in mm for accurate degree conversion (0 = use default)
         """
         if not self.frames:
             return
 
         valid_frames = [f for f in self.frames if f.gaze_x is not None and f.face_detected]
-        self.tracking_ratio = len(valid_frames) / len(self.frames) if self.frames else 0
-
         if not valid_frames:
             return
 
-        # Calculate distances for legacy metrics
-        distances = []
-        for f in valid_frames:
-            dist = np.sqrt((f.gaze_x - f.target_x)**2 + (f.gaze_y - f.target_y)**2)
-            distances.append(dist)
-
+        # Compute avg_distance_px for backward compatibility
+        distances = [np.sqrt((f.gaze_x - f.target_x)**2 + (f.gaze_y - f.target_y)**2) for f in valid_frames]
         self.avg_distance_px = np.mean(distances)
 
-        # Legacy accuracy score (0-100, based on distance relative to screen)
-        # Threshold increased from 0.2 to 0.4 for more realistic webcam-based tracking
-        relative_dist = self.avg_distance_px / screen_diagonal
-        self.accuracy_score = max(0, min(100, (1 - relative_dist / 0.4) * 100))
+        # Head monitoring, per frame, alongside the pupils. The subject's neutral pose is the
+        # median pose across the session; every frame is then scored for how far the head has
+        # drifted from it. Range-based scoring missed movement entirely when the head drifted
+        # early and stayed there, which is exactly the case that must be penalised.
+        pitches = np.array([f.head_pitch for f in valid_frames])
+        yaws = np.array([f.head_yaw for f in valid_frames])
+        ref_pitch = float(np.median(pitches))
+        ref_yaw = float(np.median(yaws))
+        head_drift = np.sqrt((pitches - ref_pitch) ** 2 + (yaws - ref_yaw) ** 2)
 
-        # Legacy smoothness score (0-100)
+        # Stillness factor per frame: 1.0 while the head holds still, decaying to 0.0 as it
+        # drifts. The 2 deg deadband absorbs solvePnP landmark jitter on a genuinely still head.
+        HEAD_DEADBAND_DEG = 2.0
+        HEAD_DECAY_DEG = 8.0
+        stillness = np.clip(1.0 - (head_drift - HEAD_DEADBAND_DEG) / HEAD_DECAY_DEG, 0.0, 1.0)
+
+        # Head stillness score: 100% only while the head holds still as the eyes move.
+        self.head_stillness_score = float(np.mean(stillness) * 100)
+
+        # Weight applied to the eye scores. Head movement is already reported on its own via
+        # head_stillness_score, so charging it again at full strength triple-counted the same
+        # motion and squashed every score. The square root keeps the penalty real but gentle,
+        # so a couple of degrees of sway costs a few points instead of halving the result.
+        def stillness_score(idx: int) -> float:
+            return float(np.sqrt(stillness[idx]))
+
+        # Direction-based accuracy: is the eye moving in the same direction as the target?
+        # Velocities are smoothed over a short window first. Single-frame deltas from a webcam
+        # are dominated by landmark jitter, which buried the actual tracking signal in noise.
+        SMOOTH_WINDOW = 3
+        direction_scores = []
+        speed_scores = []
+        for i in range(1, len(valid_frames)):
+            dt = valid_frames[i].timestamp - valid_frames[i-1].timestamp
+            if dt <= 0:
+                continue
+            lo = max(1, i - SMOOTH_WINDOW + 1)
+
+            tdx = valid_frames[i].target_x - valid_frames[lo-1].target_x
+            tdy = valid_frames[i].target_y - valid_frames[lo-1].target_y
+            span = valid_frames[i].timestamp - valid_frames[lo-1].timestamp
+            target_speed = np.sqrt(tdx**2 + tdy**2) / span
+
+            gdx = valid_frames[i].gaze_x - valid_frames[lo-1].gaze_x
+            gdy = valid_frames[i].gaze_y - valid_frames[lo-1].gaze_y
+            gaze_speed = np.sqrt(gdx**2 + gdy**2) / span
+
+            if target_speed <= 1:
+                continue  # Target effectively stationary: nothing to match against.
+
+            if gaze_speed > 1:
+                dot = (gdx * tdx + gdy * tdy) / (gaze_speed * target_speed * span**2)
+                # Graded, not cliffed. A hard dot > 0.5 gate threw away partial credit and
+                # scored everything below it as a total failure; cosine similarity already
+                # encodes "how aligned", so use it directly and clamp the wrong-way half.
+                direction_scores.append(max(0.0, dot) * stillness_score(i))
+
+            # Speed match with a tolerance band. Gaze and target velocity are derived from the
+            # same noisy stream and never agree frame-for-frame, so scoring the raw ratio
+            # punished ordinary measurement noise as if it were poor tracking. The band is
+            # sized to swallow the spread a good tracker shows under realistic webcam jitter;
+            # beyond it the shortfall is charged proportionally.
+            SPEED_TOLERANCE = 0.35
+            ratio = gaze_speed / target_speed
+            deviation = max(0.0, abs(ratio - 1.0) - SPEED_TOLERANCE) / (1.0 - SPEED_TOLERANCE)
+            speed_scores.append(max(0.0, 1.0 - deviation) * stillness_score(i))
+
+        # Accuracy = average direction score (0-100), head movement weighted in
+        if direction_scores:
+            self.accuracy_score = float(np.mean(direction_scores) * 100)
+        else:
+            self.accuracy_score = 0
+
+        # Tracking rate: the share of frames that produced a usable gaze estimate. This is a
+        # data-validity measure -- it says nothing about how well the eyes followed the target.
+        # The speed match used to be stored here, which reported the gaze estimate's own
+        # damping as if the patient had failed to track. It is reported separately now.
+        self.tracking_ratio = 100.0 * len(valid_frames) / len(self.frames)
+
+        # Speed match: how closely the gaze velocity matched the target velocity. This is a
+        # property of the gaze estimate (its gain), not of the patient.
+        if speed_scores:
+            self.speed_match_score = float(min(100.0, np.mean(speed_scores) * 100))
+        else:
+            self.speed_match_score = 0
+
+        # Smoothness: 100 = smoothly tracked, 0 = very jerky. Velocities use the same windowed
+        # difference as the other metrics. Single-frame deltas made this measure camera jitter
+        # rather than the subject: a flawless tracker dropped from 100 to 64 under 8 px of
+        # pixel noise, which says nothing about how smoothly the eyes moved.
         if len(valid_frames) > 2:
             gaze_velocities = []
             for i in range(1, len(valid_frames)):
-                dt = valid_frames[i].timestamp - valid_frames[i-1].timestamp
-                if dt > 0:
-                    dx = valid_frames[i].gaze_x - valid_frames[i-1].gaze_x
-                    dy = valid_frames[i].gaze_y - valid_frames[i-1].gaze_y
-                    velocity = np.sqrt(dx**2 + dy**2) / dt
-                    gaze_velocities.append(velocity)
+                lo = max(1, i - SMOOTH_WINDOW + 1)
+                span = valid_frames[i].timestamp - valid_frames[lo-1].timestamp
+                if span > 0:
+                    dx = valid_frames[i].gaze_x - valid_frames[lo-1].gaze_x
+                    dy = valid_frames[i].gaze_y - valid_frames[lo-1].gaze_y
+                    gaze_velocities.append(np.sqrt(dx**2 + dy**2) / span)
 
-            if gaze_velocities:
-                velocity_std = np.std(gaze_velocities)
-                velocity_mean = np.mean(gaze_velocities) + 1
-                cv = velocity_std / velocity_mean
-                self.smooth_score = max(0, min(100, (1 - cv) * 100))
+            if gaze_velocities and np.mean(gaze_velocities) > 0:
+                cv = float(np.std(gaze_velocities) / (np.mean(gaze_velocities) + 1e-6))
+                # Noise floor. A perfectly smooth tracker still shows CV ~0.27 under 2 px of
+                # landmark jitter, and that variation is the camera, not the subject. Anything
+                # inside the floor counts as perfectly smooth; only real jerk above it is charged.
+                NOISE_FLOOR_CV = 0.40
+                excess = max(0.0, cv - NOISE_FLOOR_CV)
+                self.smooth_score = float(max(0.0, min(100.0, (1.0 - excess / 1.6) * 100)))
+            else:
+                self.smooth_score = 0
 
         # Calculate clinical metrics if screen config is provided
         if screen_config is not None:
-            self._compute_clinical_metrics(screen_config, valid_frames)
+            self._compute_clinical_metrics(screen_config, valid_frames, len(self.frames))
 
-    def _compute_clinical_metrics(self, screen_config: ScreenConfig, valid_frames: List[TrackingFrame]):
+        # Pupil distance corrects the degree-domain metrics. Iris displacement for a given eye
+        # rotation scales with IPD, so degree error computed against a nominal IPD is wrong for
+        # anyone whose IPD differs -- a 71 mm subject was previously under-reported by ~11%.
+        if pupil_distance_mm > 0 and self.accuracy_degrees > 0:
+            ipd_scale = REFERENCE_IPD_MM / pupil_distance_mm
+            self.accuracy_degrees *= ipd_scale
+        self.pupil_distance_mm = pupil_distance_mm
+
+    def _compute_clinical_metrics(self, screen_config: ScreenConfig,
+                                  valid_frames: List[TrackingFrame],
+                                  total_frames: int = 0):
         """Compute clinical-grade metrics using the MetricsCalculator."""
         if len(valid_frames) < 3:
             return
@@ -145,7 +249,7 @@ class TestResult:
 
         # Calculate pursuit metrics
         self.clinical_metrics = calc.calculate_pursuit_metrics(
-            target_positions, gaze_positions, timestamps
+            target_positions, gaze_positions, timestamps, total_frames=total_frames
         )
 
         # Copy to instance attributes for easy access
@@ -162,12 +266,17 @@ class TestResult:
             "pattern": self.pattern.value,
             "duration": self.duration,
             "total_frames": len(self.frames),
+            "target_angular_speed_deg_s": round(self.target_angular_speed_deg_s, 1),
+            "uncalibrated": self.uncalibrated,
             "metrics": {
                 "tracking_ratio": round(self.tracking_ratio, 4),
+                "speed_match_score": round(self.speed_match_score, 2),
                 "avg_distance_px": round(self.avg_distance_px, 2),
                 "accuracy_score": round(self.accuracy_score, 2),
                 "smooth_score": round(self.smooth_score, 2),
                 "lag_ms": round(self.lag_ms, 2),
+                "pupil_distance_mm": round(self.pupil_distance_mm, 1),
+                "head_stillness_score": round(self.head_stillness_score, 2),
             },
             "clinical_metrics": {
                 "pursuit_gain": round(self.pursuit_gain, 3),
@@ -335,6 +444,43 @@ class SmoothPursuitTest:
         self._current_point_index = 0
         self._point_start_time = 0.0
 
+        # Provenance of the gaze signal feeding this test. A run without calibration scores
+        # uncalibrated gaze, which lands hundreds of pixels off and makes every metric
+        # meaningless; recording it keeps such a result from being mistaken for real data.
+        self.calibrated: bool = True
+        self.uncalibrated: bool = False
+
+    def peak_angular_speed_deg_s(self) -> float:
+        """Peak angular demand this pattern places on the pursuit system, in deg/s.
+
+        The target is far larger than the foveal field, so a sinusoidal sweep is the only
+        shape that stays followable. Peak velocity of a sinusoid is pi/2 times its mean, and
+        smooth pursuit tops out near 30-40 deg/s -- past that the subject cannot win regardless
+        of how the scoring is tuned, so the number is recorded for interpretation.
+        """
+        usable_w = self.screen_width - 2 * self.screen_width * self.config.margin
+        usable_h = self.screen_height - 2 * self.screen_height * self.config.margin
+
+        if self.config.pattern == TargetPattern.HORIZONTAL:
+            amplitude_px = usable_w / 2
+            period = 3.0 / max(self.config.speed, 1e-6)
+        elif self.config.pattern == TargetPattern.VERTICAL:
+            amplitude_px = usable_h / 2
+            period = 3.0 / max(self.config.speed, 1e-6)
+        elif self.config.pattern in (TargetPattern.CIRCULAR, TargetPattern.FIGURE_EIGHT):
+            amplitude_px = self.screen_height * self.config.radius_ratio
+            period = 4.0 / max(self.config.speed, 1e-6)
+        else:
+            return 0.0
+
+        # Pixels per degree via the nominal screen geometry the metrics module assumes.
+        px_per_cm = self.screen_height / NOMINAL_SCREEN_HEIGHT_CM
+        px_per_deg = 2 * 60.0 * np.tan(np.radians(0.5)) * px_per_cm
+        amplitude_deg = amplitude_px / max(px_per_deg, 1e-6)
+
+        # Mean speed around a full cycle, scaled by the sinusoid peak factor.
+        return 4 * amplitude_deg / period * (np.pi / 2)
+
     def update_screen_dimensions(self, width: int, height: int):
         """
         Update the screen dimensions.
@@ -386,7 +532,7 @@ class SmoothPursuitTest:
 
         return True
 
-    def stop(self) -> Optional[TestResult]:
+    def stop(self, pupil_distance_mm: float = 0.0) -> Optional[TestResult]:
         """Stop the test and return results."""
         if not self.is_running:
             return None
@@ -394,9 +540,32 @@ class SmoothPursuitTest:
         self.is_running = False
 
         if self.current_result:
-            self.current_result.compute_metrics(self.screen_diagonal)
+            self.current_result.uncalibrated = self.uncalibrated
+            self.current_result.target_angular_speed_deg_s = self.peak_angular_speed_deg_s()
+            self.current_result.compute_metrics(
+                self.screen_diagonal,
+                screen_config=self.screen_config(),
+                pupil_distance_mm=pupil_distance_mm,
+            )
 
         return self.current_result
+
+    def screen_config(self) -> ScreenConfig:
+        """Screen geometry used for the degree-domain metrics.
+
+        The software cannot know the physical size of the panel the clinician is using, so the
+        nominal 16:9 geometry the rest of the metrics module assumes is used, with the pixel
+        size taken from the actual test area.
+        """
+        height_cm = NOMINAL_SCREEN_HEIGHT_CM
+        width_cm = height_cm * (self.screen_width / max(self.screen_height, 1))
+        return ScreenConfig(
+            width_px=self.screen_width,
+            height_px=self.screen_height,
+            width_cm=width_cm,
+            height_cm=height_cm,
+            viewing_distance_cm=DEFAULT_VIEWING_DISTANCE_CM,
+        )
 
     def get_elapsed_time(self) -> float:
         """Get elapsed time since test start."""
@@ -557,6 +726,20 @@ def generate_report(result: TestResult, include_clinical: bool = True) -> str:
     report.append("╚" + "═" * 58 + "╝")
     report.append("")
     report.append(f"  📋 Test Pattern: {result.pattern.value}")
+    if result.uncalibrated:
+        report.append("")
+        report.append("  ⚠️  SCORED WITHOUT CALIBRATION — THIS RESULT IS NOT VALID")
+        report.append("     Gaze was estimated without calibration and lands far from the")
+        report.append("     target. Calibrate before running a test you intend to score.")
+    if result.target_angular_speed_deg_s > 40:
+        report.append("")
+        report.append(
+            f"  ⚠️  Target peaked at {result.target_angular_speed_deg_s:.0f} deg/s, above the"
+        )
+        report.append(
+            "     ~30-40 deg/s smooth-pursuit ceiling. A low score here reflects an"
+        )
+        report.append("     unwinnable target, not poor tracking. Lower the speed setting.")
     report.append(f"  ⏱️  Duration: {result.duration:.1f} seconds")
     report.append(f"  📊 Total Frames: {len(result.frames)}")
     report.append("")
@@ -565,11 +748,17 @@ def generate_report(result: TestResult, include_clinical: bool = True) -> str:
     report.append("─" * 60)
     
     # Visual metrics with progress bars
-    tracking_pct = result.tracking_ratio * 100
-    report.append(f"  Tracking Rate:  {_progress_bar(tracking_pct)} {tracking_pct:.1f}%")
-    report.append(f"  Accuracy:       {_progress_bar(result.accuracy_score)} {result.accuracy_score:.1f}/100")
-    report.append(f"  Smoothness:     {_progress_bar(result.smooth_score, good_threshold=70, warn_threshold=50)} {result.smooth_score:.1f}/100")
-    report.append(f"  Avg Distance:   {result.avg_distance_px:.1f} px from target")
+    tracking_pct = result.tracking_ratio  # Already 0-100
+    report.append(f"  {'Tracking Rate:':17s} {_progress_bar(tracking_pct)} {tracking_pct:.1f}%")
+    report.append(f"  {'':17s} (frames with a usable gaze estimate)")
+    report.append(f"  {'Direction Match:':17s} {_progress_bar(result.accuracy_score)} {result.accuracy_score:.1f}/100")
+    report.append(f"  {'Speed Match:':17s} {_progress_bar(result.speed_match_score)} {result.speed_match_score:.1f}/100")
+    report.append(
+        f"  {'Head Stillness:':17s} {_progress_bar(result.head_stillness_score)} "
+        f"{result.head_stillness_score:.1f}/100"
+    )
+    report.append(f"  {'Smoothness:':17s} {_progress_bar(result.smooth_score, good_threshold=70, warn_threshold=50)} {result.smooth_score:.1f}/100")
+    report.append(f"  {'Avg Distance:':17s} {result.avg_distance_px:.1f} px from target")
 
     # Clinical metrics section
     if include_clinical and result.clinical_metrics is not None:
@@ -597,39 +786,44 @@ def generate_report(result: TestResult, include_clinical: bool = True) -> str:
         report.append(f"                  (Normal: >0.70)")
         
         report.append(f"  Saccades:       {result.catch_up_saccade_count} catch-up saccades")
+        report.append("")
+        report.append("  ⚠️  Provisional thresholds, not clinically validated")
+        report.append("     (docs/clinical/sign-off-register.md) - measurements only.")
 
     report.append("")
     report.append("─" * 60)
-    report.append("💡 INTERPRETATION")
+    report.append("📏 READING AGAINST PROVISIONAL THRESHOLDS")
     report.append("─" * 60)
+    report.append("  These are measurements compared with unvalidated thresholds, not a")
+    report.append("  clinical interpretation. Interpretation is the clinician's job.")
 
-    # Clinical interpretation based on pursuit gain
+    # Clinical reading based on pursuit gain
     if result.clinical_metrics is not None:
         if result.pursuit_gain >= 0.8:
-            gain_interp = "✅ Pursuit gain NORMAL (≥0.8)"
+            gain_interp = "✅ Pursuit gain within the provisional band (≥0.8)"
         elif result.pursuit_gain >= 0.7:
-            gain_interp = "⚠️ Pursuit gain BORDERLINE (0.7-0.8) - monitor"
+            gain_interp = "⚠️ Pursuit gain in the borderline band (0.7-0.8)"
         else:
-            gain_interp = "❌ Pursuit gain ABNORMAL (<0.7) - recommend evaluation"
+            gain_interp = "❌ Pursuit gain below the provisional band (<0.7)"
         report.append(f"  {gain_interp}")
 
         if result.accuracy_degrees <= 2.0:
-            acc_interp = "✅ Tracking accuracy NORMAL (≤2°)"
+            acc_interp = "✅ Tracking accuracy within the provisional band (≤2°)"
         elif result.accuracy_degrees <= 3.0:
-            acc_interp = "⚠️ Tracking accuracy BORDERLINE (2-3°)"
+            acc_interp = "⚠️ Tracking accuracy in the borderline band (2-3°)"
         else:
-            acc_interp = "❌ Tracking accuracy ABNORMAL (>3°) - recommend evaluation"
+            acc_interp = "❌ Tracking accuracy above the provisional band (>3°)"
         report.append(f"  {acc_interp}")
     else:
-        # Fallback to legacy interpretation
+        # Fallback to legacy reading
         if result.accuracy_score >= 80:
-            accuracy_interp = "✅ Excellent tracking accuracy"
+            accuracy_interp = "✅ Direction match high"
         elif result.accuracy_score >= 60:
-            accuracy_interp = "✅ Good tracking accuracy"
+            accuracy_interp = "✅ Direction match good"
         elif result.accuracy_score >= 40:
-            accuracy_interp = "⚠️ Moderate tracking accuracy - may indicate difficulties"
+            accuracy_interp = "⚠️ Direction match moderate"
         else:
-            accuracy_interp = "❌ Poor tracking accuracy - recommend evaluation"
+            accuracy_interp = "❌ Direction match low"
         report.append(f"  {accuracy_interp}")
 
     if result.smooth_score >= 70:
@@ -637,11 +831,11 @@ def generate_report(result: TestResult, include_clinical: bool = True) -> str:
     elif result.smooth_score >= 50:
         smooth_interp = "⚠️ Mostly smooth with some jerkiness"
     else:
-        smooth_interp = "❌ Jerky eye movements detected - may indicate oculomotor issues"
+        smooth_interp = "❌ Jerky eye movements detected"
     report.append(f"  {smooth_interp}")
 
-    if result.tracking_ratio < 0.7:
-        tracking_interp = "⚠️ Low tracking rate may affect reliability"
+    if result.tracking_ratio < 70:
+        tracking_interp = "⚠️ Low tracking rate - much of the run had no usable gaze estimate"
     else:
         tracking_interp = "✅ Data quality: Good"
     report.append(f"  {tracking_interp}")

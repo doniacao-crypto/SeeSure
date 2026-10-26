@@ -48,6 +48,7 @@ ONEURO_DCUTOFF = 1.0                  # 1-Euro filter derivative cutoff
 DEFAULT_SCREEN_WIDTH = 1920           # Default screen width (pixels)
 DEFAULT_SCREEN_HEIGHT = 1080          # Default screen height (pixels)
 DEFAULT_VIEWING_DISTANCE_CM = 60.0    # Default viewing distance (cm)
+NOMINAL_SCREEN_HEIGHT_CM = 29.9      # Nominal 16:9 panel height the degree metrics assume
 
 # =============================================================================
 # Test Configuration Defaults
@@ -59,6 +60,10 @@ DEFAULT_CALIBRATION_GRID_SIZE = 3     # 3x3 calibration grid
 DEFAULT_SAMPLES_PER_POINT = 30        # Samples to collect per calibration point
 DEFAULT_CALIBRATION_MARGIN = 0.05     # Calibration grid margin (5%, close to test 3%)
 DEFAULT_CALIBRATION_GRID_SIZE_EXTENDED = 4  # 4x4 = 16 points for better coverage
+# Seconds of on-screen notice before the next head-pose level starts. The patient has to
+# physically move the head between levels; without a warning the first samples of the new
+# pose are collected while the head is still turning.
+CALIBRATION_POSE_TRANSITION_SECONDS = 3
 
 # =============================================================================
 # UI Constants

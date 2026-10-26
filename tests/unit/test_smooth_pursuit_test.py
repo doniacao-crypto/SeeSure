@@ -365,7 +365,7 @@ class TestTestResult:
 
         result.compute_metrics(1000)
 
-        assert result.tracking_ratio == 1.0  # All frames valid
+        assert result.tracking_ratio == 100.0  # Speed match percentage
         assert result.avg_distance_px > 0
 
 
@@ -375,7 +375,7 @@ class TestGenerateReport:
     def test_generate_report_basic(self):
         """Test basic report generation."""
         result = TestResult(pattern=TargetPattern.HORIZONTAL, duration=5.0)
-        result.tracking_ratio = 0.85
+        result.tracking_ratio = 85.0
         result.accuracy_score = 75.0
         result.smooth_score = 80.0
 
@@ -383,7 +383,7 @@ class TestGenerateReport:
 
         assert "EYE MOVEMENT ASSESSMENT REPORT" in report
         assert "horizontal" in report.lower()
-        assert "85" in report  # tracking ratio
+        assert "85" in report  # tracking ratio, 0-100 scale
 
 
 if __name__ == "__main__":

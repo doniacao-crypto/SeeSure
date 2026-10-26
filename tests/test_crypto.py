@@ -166,7 +166,7 @@ class TestPatientManagerEncryption:
         # Now simulate missing key
         monkeypatch.setattr("keyring.get_password", lambda s, a: None)
         importlib.reload(cm); importlib.reload(pm_mod)
-        from src.crypto import MissingEncryptionKey
+        from crypto import MissingEncryptionKey
         with pytest.raises(MissingEncryptionKey):
             pm_mod.PatientManager(data_dir=tmp_path)
 

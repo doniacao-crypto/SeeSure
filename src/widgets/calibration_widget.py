@@ -7,13 +7,14 @@ import numpy as np
 import time
 
 from PyQt6.QtWidgets import QWidget, QMessageBox
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QRect, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from constants import CALIBRATION_POSE_TRANSITION_SECONDS
 from gaze_estimator import GazeEstimator
 from eye_tracker import EyeData
 
@@ -21,6 +22,7 @@ from eye_tracker import EyeData
 class CalibrationWidget(QWidget):
     """Widget for the calibration process."""
     calibration_complete = pyqtSignal()
+    calibration_stopped = pyqtSignal()
 
     def __init__(self, gaze_estimator: GazeEstimator, parent=None):
         super().__init__(parent)
@@ -44,6 +46,10 @@ class CalibrationWidget(QWidget):
         ]
         self.current_pose_index = 0
 
+        # True while the between-level notice is counting down: the patient is being told to
+        # move their head and no samples are collected yet.
+        self._pose_transition = False
+
         self.is_calibrating = False
         self.countdown = 0
 
@@ -59,6 +65,7 @@ class CalibrationWidget(QWidget):
 
         self.setStyleSheet("background-color: #1a1a2e;")
 
+
     def resizeEvent(self, event):
         """Handle resize to regenerate calibration points."""
         super().resizeEvent(event)
@@ -66,6 +73,7 @@ class CalibrationWidget(QWidget):
         if not self.is_calibrating:
             self._generate_points()
         self.update()
+
 
     def _generate_points(self):
         """Generate calibration point positions based on current widget size."""
@@ -111,11 +119,12 @@ class CalibrationWidget(QWidget):
         self.current_point_index = 0
         self.current_pose_index = 0
         self.current_samples = 0
+        self._pose_transition = False
         self._settling = False
         self._settling_start_time = 0.0
         self._collecting = False
         self.is_calibrating = True
-        self.countdown = 3  # 3 second countdown before first point
+        self.countdown = 0  # No countdown - go straight to settling
 
         self.timer.start(1000)  # 1 second intervals for countdown
         self.update()
@@ -150,7 +159,7 @@ class CalibrationWidget(QWidget):
             self._collecting = False
             self.current_samples = 0
             self.current_point_index += 1
-            self.countdown = 2  # Short countdown between points
+            self.countdown = 0  # No countdown between points
 
             if self.current_point_index >= len(self.calibration_points):
                 # Grid done for this head pose -- move to the next pose, or finish.
@@ -159,7 +168,11 @@ class CalibrationWidget(QWidget):
                     self._finish_calibration()
                 else:
                     self.current_point_index = 0
-                    self.countdown = 5  # Longer pause: the subject must change head pose
+                    # Tell the patient to move their head and give them time to do it. Without
+                    # this the first samples of the new level are taken mid-turn, which pollutes
+                    # the head-pose coefficients the level exists to teach.
+                    self._pose_transition = True
+                    self.countdown = CALIBRATION_POSE_TRANSITION_SECONDS
                     self.timer.start(1000)
             else:
                 self.timer.start(1000)
@@ -171,11 +184,13 @@ class CalibrationWidget(QWidget):
         self.countdown -= 1
         if self.countdown <= 0:
             self.timer.stop()
+            self._pose_transition = False
             # Start settling period before collecting samples
             self._settling = True
             self._settling_start_time = time.time()
             self._collecting = False
         self.update()
+
 
     def _finish_calibration(self):
         """Finish the calibration process."""
@@ -185,31 +200,17 @@ class CalibrationWidget(QWidget):
         if self.gaze_estimator.finish_calibration():
             quality = self.gaze_estimator.get_calibration_quality()
 
-            # Report the held-out error, not avg_error_px. avg_error_px scores the model on the rows
-            # it was fitted to, so it looks near-perfect even when the model generalises terribly.
-            message = (
-                f"Calibration complete.\n\n"
-                f"Held-out error: {quality['cv_error_px']:.1f} px "
-                f"(error at screen locations not used for fitting)\n"
-                f"Training-fit error: {quality['avg_error_px']:.1f} px "
-                f"(optimistic - same rows the model was fitted to)\n\n"
-                f"Head yaw spread: {quality['head_yaw_spread_deg']:.1f} deg\n"
-                f"Head pitch spread: {quality['head_pitch_spread_deg']:.1f} deg\n"
-                f"Samples: {quality['training_rows']} rows over {quality['points']} points"
-            )
-
+            # No popup on success. The error figures belong in the report, not in a modal
+            # thrown at the operator between patients. The head-pose warning is the one case
+            # that must interrupt: without head movement the calibration is worthless and the
+            # session has to be redone.
             if not quality['head_pose_ok']:
                 QMessageBox.warning(
-                    self, "Calibration Complete - Head Pose Warning",
-                    message + (
-                        "\n\nWARNING: head pose barely varied during calibration, so the model "
-                        "could not learn head compensation. Gaze will degrade sharply as soon as "
-                        "the subject turns their head. Redo the calibration and hold the requested "
-                        "head poses."
-                    )
+                    self, "Calibration Incomplete - Head Pose Warning",
+                    "Head pose barely varied during calibration, so the model could not learn "
+                    "head compensation. Gaze will degrade sharply as soon as the subject turns "
+                    "their head.\n\nPlease redo the calibration and hold the requested head poses."
                 )
-            else:
-                QMessageBox.information(self, "Calibration Complete", message)
 
             self.calibration_complete.emit()
         else:
@@ -217,6 +218,17 @@ class CalibrationWidget(QWidget):
                 self, "Calibration Failed",
                 "Calibration failed. Please try again with better lighting."
             )
+
+    def stop_calibration(self):
+        """Stop calibration early and emit signal with partial results."""
+        if not self.is_calibrating:
+            return
+        self.is_calibrating = False
+        self.timer.stop()
+        # Try to finish with whatever points we have so far
+        if self.gaze_estimator.calibration_profile and len(self.gaze_estimator.calibration_profile.points) >= 5:
+            self.gaze_estimator.finish_calibration()
+        self.calibration_stopped.emit()
 
     def paintEvent(self, event):
         """Draw calibration points and status."""
@@ -245,8 +257,9 @@ class CalibrationWidget(QWidget):
                 painter.setBrush(QColor(50, 50, 50))  # Future - dark
             painter.drawEllipse(x - 15, y - 15, 30, 30)
 
-        # Draw current point (highlighted)
-        if self.current_point_index < len(self.calibration_points):
+        # Draw current point (highlighted). During a pose transition the patient must be moving
+        # their head, not chasing the dot, so no target is drawn yet.
+        if self.current_point_index < len(self.calibration_points) and not self._pose_transition:
             x, y = self.calibration_points[self.current_point_index]
 
             if self.countdown > 0:
@@ -283,6 +296,10 @@ class CalibrationWidget(QWidget):
             painter.drawText(0, 112, self.width(), 28,
                              Qt.AlignmentFlag.AlignHCenter, subtitle)
 
+        # Between-level notice: big, centred, and unmissable from the patient's chair.
+        if self._pose_transition:
+            self._paint_pose_transition(painter)
+
         # Draw status text
         painter.setPen(QColor(255, 255, 255))
         painter.setFont(QFont("Arial", 16))
@@ -290,8 +307,40 @@ class CalibrationWidget(QWidget):
             f"Pose {self.current_pose_index + 1} of {len(self.head_poses)}  |  "
             f"Point {self.current_point_index + 1} of {len(self.calibration_points)}"
         )
-        if self.countdown > 0:
-            status += f" - Look at the point in {self.countdown}..."
+        if self._pose_transition:
+            status += f" - Next level starts in {max(self.countdown, 0)}s"
         else:
             status += " - Keep looking at the red dot"
         painter.drawText(20, 40, status)
+
+    def _paint_pose_transition(self, painter):
+        """Draw the countdown notice shown before the next head-pose level starts."""
+        title, subtitle = self.head_poses[self.current_pose_index]
+        seconds = max(self.countdown, 0)
+
+        band = QRect(0, self.height() // 2 - 130, self.width(), 260)
+        painter.fillRect(band, QColor(0, 0, 0, 190))
+
+        painter.setPen(QColor(255, 210, 80))
+        painter.setFont(QFont("Arial", 28, QFont.Weight.Bold))
+        painter.drawText(band.adjusted(0, 16, 0, 0),
+                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                         f"NEXT LEVEL: {title}")
+
+        painter.setPen(QColor(230, 230, 230))
+        painter.setFont(QFont("Arial", 17))
+        painter.drawText(band.adjusted(0, 62, 0, 0),
+                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                         subtitle)
+
+        painter.setPen(QColor(255, 255, 255))
+        painter.setFont(QFont("Arial", 60, QFont.Weight.Bold))
+        painter.drawText(band.adjusted(0, 100, 0, 0),
+                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                         f"Starting in {seconds}")
+
+        painter.setPen(QColor(255, 210, 80))
+        painter.setFont(QFont("Arial", 16))
+        painter.drawText(band.adjusted(0, 195, 0, 0),
+                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                         "Move your head now - hold still when the count reaches zero")

@@ -883,20 +883,26 @@ class GazeEstimator:
         # point measures what we actually care about — generalizing to an unseen screen location.
         cv_error = self._leave_one_point_out_error()
 
-        # Quality score
-        error_quality = max(0, 1 - avg_error / 100)
+        # Quality score — based on held-out error (more accurate than training fit)
+        # cv_error measures generalization to unseen screen locations
+        error_quality = max(0, 1 - cv_error / 100)
         samples_quality = sum(1 for p in self.calibration_profile.points if len(p.samples) >= 5) / num_points
 
-        overall_quality = (
-            error_quality * 0.5 +
-            coverage * 0.25 +
-            min(num_points / 9, 1) * 0.15 +
-            samples_quality * 0.1
-        )
-
-        # How much head movement did calibration actually see? If the subject sat still, the head
-        # compensation terms are fitted to noise and gaze collapses the moment they turn their head.
+        # Head-movement penalty: the score should reflect how well the user moved ONLY their eyes.
+        # If the head moves significantly, the score is reduced proportionally.
         pitch_spread, yaw_spread = self.get_head_pose_spread()
+        total_head_spread = np.sqrt(pitch_spread**2 + yaw_spread**2)
+        # Penalty: 0 if head barely moved (<3deg), up to 0.8 if head moved a lot (>15deg)
+        if total_head_spread <= 3.0:
+            head_penalty = 0.0
+        else:
+            head_penalty = min(0.8, (total_head_spread - 3.0) * 0.067)
+
+        # Final score: eye quality reduced by head movement penalty
+        overall_quality = error_quality * (1.0 - head_penalty)
+        overall_quality = max(0.0, min(1.0, overall_quality))
+
+        # Head pose spread (for warning display only)
         head_pose_ok = (
             max(pitch_spread, yaw_spread) >= self.MIN_HEAD_POSE_SPREAD_DEG
         )
