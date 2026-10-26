@@ -21,6 +21,15 @@ class CameraThread(QThread):
     """Thread for camera capture to avoid blocking UI."""
     # Signal now includes capture timestamp for timing synchronization
     frame_ready = pyqtSignal(np.ndarray, EyeData, float)
+    # The camera stopped delivering frames (or could not be opened at all).
+    camera_failed = pyqtSignal(str)
+    # The camera came back after a failure.
+    camera_recovered = pyqtSignal()
+
+    # Consecutive failed grabs before the stream is called dead.
+    MAX_CONSECUTIVE_FAILURES = 30
+    # How long to wait before reopening a device that stopped delivering frames.
+    REOPEN_DELAY_MS = 2000
 
     def __init__(self, eye_tracker: EyeTracker):
         super().__init__()
@@ -32,19 +41,46 @@ class CameraThread(QThread):
         self._frame_times = collections.deque(maxlen=30)
         self._actual_fps = 0.0
 
-    def run(self):
-        self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
+    def _open_camera(self):
+        """Open the webcam, or return None if it cannot be opened."""
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            cap.release()
+            return None
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        return cap
 
+    def run(self):
         self.running = True
+        self.cap = self._open_camera()
+        if self.cap is None:
+            self.camera_failed.emit(
+                "Camera could not be opened. It may be in use by another application."
+            )
+
+        consecutive_failures = 0
+        reported = False
         while self.running:
+            if self.cap is None:
+                # No device: keep trying, slowly, so the app recovers on its own once the
+                # camera frees up.
+                self.msleep(self.REOPEN_DELAY_MS)
+                self.cap = self._open_camera()
+                consecutive_failures = 0
+                continue
+
             ret, frame = self.cap.read()
             # Capture timestamp immediately after reading frame
             capture_time = time.time()
 
             if ret:
+                consecutive_failures = 0
+                if reported:
+                    reported = False
+                    self.camera_recovered.emit()
+
                 # Update FPS measurement
                 self._frame_times.append(capture_time)
                 if len(self._frame_times) >= 2:
@@ -61,6 +97,22 @@ class CameraThread(QThread):
 
                 # Emit the display frame and eye data
                 self.frame_ready.emit(display_frame, eye_data, capture_time)
+
+            else:
+                consecutive_failures += 1
+                if consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
+                    if not reported:
+                        reported = True
+                        self.camera_failed.emit(
+                            "Camera stopped delivering frames. It may be in use by another "
+                            "application, or the device may have been disabled."
+                        )
+                    # A stream that has died does not come back by itself: reopen the device.
+                    self.cap.release()
+                    self.cap = None
+                    consecutive_failures = 0
+                    self.msleep(self.REOPEN_DELAY_MS)
+                    continue
 
             # Reduced sleep to minimize latency (was 16ms)
             self.msleep(5)

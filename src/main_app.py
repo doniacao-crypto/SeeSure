@@ -32,6 +32,8 @@ from saccade_test import SaccadeTest, SaccadeTestConfig, SaccadeTestType, Saccad
 from validation import ValidationTest, ValidationConfig, ValidationPattern, ValidationResult, generate_validation_report
 from pdf_report import PDFReportGenerator, PatientInfo, ClinicInfo
 from patient_manager import PatientManager, Patient
+from user_manager import UserManager, User, USER_ROLE_ADMIN
+from auth_dialog import LoginDialog
 
 # Import UI widgets from separate modules
 from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget, ValidationWidget
@@ -48,6 +50,7 @@ class MainWindow(QMainWindow):
     VALIDATION_VIEW = 4
     RESULTS_VIEW = 5
     HISTORY_VIEW = 6
+    ADMIN_VIEW = 7
 
     def __init__(self):
         super().__init__()
@@ -60,10 +63,14 @@ class MainWindow(QMainWindow):
         self.session_history = SessionHistoryManager()
         self.patient_manager = PatientManager()
         self.current_patient: Optional[Patient] = None
+        self.user_manager = UserManager()
+        self.current_user: Optional[User] = None
 
         # Camera thread
         self.camera_thread = CameraThread(self.eye_tracker)
         self.camera_thread.frame_ready.connect(self._on_frame_ready)
+        self.camera_thread.camera_failed.connect(self._on_camera_failed)
+        self.camera_thread.camera_recovered.connect(self._on_camera_recovered)
 
         # Current eye data
         self.current_eye_data: Optional[EyeData] = None
@@ -112,6 +119,9 @@ class MainWindow(QMainWindow):
         
         # History view
         self.stack.addWidget(self._create_history_view())
+
+        # Admin panel view (only visible to admins)
+        self.stack.addWidget(self._create_admin_view())
         
         # Initialize last result storage
         self._last_result: Optional[TestResult] = None
@@ -179,6 +189,37 @@ class MainWindow(QMainWindow):
         self.history_btn.setToolTip("View and manage past test sessions")
         self.history_btn.clicked.connect(self._show_history)
         scroll_layout.addWidget(self.history_btn)
+
+        # Admin button (only visible to admins)
+        self.admin_btn = QPushButton("⚙️ Admin Panel")
+        self.admin_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e17055;
+                color: white;
+                padding: 8px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #d35400; }
+        """)
+        self.admin_btn.clicked.connect(self._show_admin)
+        self.admin_btn.hide()
+        scroll_layout.addWidget(self.admin_btn)
+
+        # Login button
+        self.login_btn = QPushButton("🔑 Login / Sign Up")
+        self.login_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0984e3;
+                color: white;
+                padding: 8px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #0770c2; }
+        """)
+        self.login_btn.clicked.connect(self._show_login)
+        scroll_layout.addWidget(self.login_btn)
 
         scroll_layout.addStretch()
         scroll_area.setWidget(scroll_content)
@@ -273,17 +314,11 @@ class MainWindow(QMainWindow):
         layout = QFormLayout(dialog)
         
         name_edit = QLineEdit()
-        dob_edit = QLineEdit()
-        dob_edit.setPlaceholderText("YYYY-MM-DD")
-        gender_edit = QLineEdit()
-        glasses_check = QCheckBox()
-        notes_edit = QLineEdit()
+        pd_edit = QLineEdit()
+        pd_edit.setPlaceholderText("cm (e.g. 6.3)")
         
         layout.addRow("Name:", name_edit)
-        layout.addRow("Date of Birth:", dob_edit)
-        layout.addRow("Gender:", gender_edit)
-        layout.addRow("Wears Glasses:", glasses_check)
-        layout.addRow("Notes:", notes_edit)
+        layout.addRow("Pupil Distance (cm):", pd_edit)
         
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -293,12 +328,11 @@ class MainWindow(QMainWindow):
         layout.addRow(buttons)
         
         if dialog.exec() == QDialog.DialogCode.Accepted:
+            pd_text = pd_edit.text().strip()
+            pd_value = float(pd_text) if pd_text else 6.3
             patient = self.patient_manager.create(
                 name=name_edit.text(),
-                date_of_birth=dob_edit.text(),
-                gender=gender_edit.text(),
-                wears_glasses=glasses_check.isChecked(),
-                notes=notes_edit.text()
+                pupil_distance_mm=pd_value * 10
             )
             self._refresh_patient_list()
             # Select new patient
@@ -432,14 +466,21 @@ class MainWindow(QMainWindow):
         layout.addLayout(speed_row)
         
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.speed_slider.setRange(1, 10)
+        # Capped at 0.7. At 1.0 the horizontal sweep peaks near 50 deg/s, above the ~30-40 deg/s
+        # smooth-pursuit ceiling, so the subject physically cannot follow it and every score
+        # reads as failure regardless of how well they track.
+        self.speed_slider.setRange(1, 7)
         self.speed_slider.setValue(5)
         self.speed_slider.valueChanged.connect(self._on_speed_changed)
-        self.speed_slider.setToolTip("Target movement speed (0.1 = slow, 1.0 = fast)")
+        self.speed_slider.setToolTip(
+            "Target movement speed. Higher is harder: smooth pursuit tops out near 30-40 deg/s."
+        )
         layout.addWidget(self.speed_slider)
 
         self.start_test_btn = QPushButton("Start Test")
-        self.start_test_btn.setToolTip("Start the eye movement test (requires calibration)")
+        self.start_test_btn.setToolTip(
+            "Start the eye movement test. Calibrate first for a valid score."
+        )
         self.start_test_btn.setStyleSheet("""
             QPushButton {
                 background-color: #00b894;
@@ -627,6 +668,10 @@ class MainWindow(QMainWindow):
             QPushButton:hover { background-color: #c02020; }
         """)
         delete_btn.clicked.connect(self._delete_history_session)
+        # Deleting a score destroys clinical data, so the control is only offered to an admin
+        # who is actually signed in. _delete_history_session re-checks this.
+        self.history_delete_btn = delete_btn
+        delete_btn.hide()
         btn_layout.addWidget(delete_btn)
 
         layout.addLayout(btn_layout)
@@ -637,18 +682,103 @@ class MainWindow(QMainWindow):
         self._refresh_history()
         self.stack.setCurrentIndex(self.HISTORY_VIEW)
 
+    def _show_admin(self):
+        """Show the admin panel."""
+        if not self.current_user or self.current_user.role != USER_ROLE_ADMIN:
+            QMessageBox.warning(self, "Access Denied", "Admin access required.")
+            return
+        self._refresh_admin_users()
+        self.stack.setCurrentIndex(self.ADMIN_VIEW)
+
+    def _show_login(self):
+        """Show the login/signup dialog."""
+        try:
+            from auth_dialog import LoginDialog
+            login = LoginDialog(self.user_manager, self)
+            if login.exec() == QDialog.DialogCode.Accepted and login.authenticated_user:
+                self.current_user = login.authenticated_user
+                is_admin = self.current_user.role == USER_ROLE_ADMIN
+                self.admin_btn.setVisible(is_admin)
+                # Deleting a stored score stays an admin-only action.
+                self.history_delete_btn.setVisible(is_admin)
+                QMessageBox.information(
+                    self, "Welcome",
+                    f"Logged in as {self.current_user.username} ({self.current_user.role})"
+                )
+        except Exception as e:
+            QMessageBox.warning(self, "Login Error", f"Failed to show login: {e}")
+
+    def _history_item_text(self, data: dict, session) -> str:
+        """One line describing a stored run."""
+        metrics = data.get('metrics', {})
+        accuracy = metrics.get('accuracy_score', 0)
+        tracking = metrics.get('tracking_ratio', 0)
+        smooth = metrics.get('smooth_score', 0)
+        # Absent in results saved before the head score existed; show "n/a" rather
+        # than a misleading 0% for those runs.
+        head = metrics.get('head_stillness_score')
+        head_text = f"{head:.0f}%" if head is not None else "n/a"
+        timestamp = data.get('timestamp', session.timestamp.strftime('%Y-%m-%d %H:%M'))
+        pattern = data.get('pattern', session.pattern)
+        # "Match" is the direction match; "Track" is the share of frames that produced a usable
+        # gaze estimate. The clinical error in degrees is shown when the run has it, because
+        # that is the number a clinician reads.
+        clinical = data.get('clinical_metrics') or {}
+        error_text = f" | Err: {clinical['accuracy_degrees']:.1f}°" if clinical.get('accuracy_degrees') else ""
+        if "speed_match_score" in metrics:
+            track_text = f"Track: {tracking:.0f}% | Speed: {metrics['speed_match_score']:.0f}%"
+        else:
+            # Saved before the tracking rate was split from the speed match: the stored value
+            # is the speed match, and the share of valid frames was never recorded.
+            track_text = f"Speed: {tracking:.0f}%"
+        item_text = (
+            f"{timestamp} | {pattern} | {track_text} | Match: {accuracy:.0f}% | "
+            f"Smooth: {smooth:.0f}% | Head: {head_text}{error_text}"
+        )
+        # Carry validity through to the list so a bad run is obvious without
+        # opening it: uncalibrated data, or a target faster than pursuit can follow.
+        if data.get('uncalibrated'):
+            item_text += "  ⚠ UNCALIBRATED"
+        peak = data.get('target_angular_speed_deg_s')
+        if peak and peak > 40:
+            item_text += f"  ⚠ TARGET {peak:.0f} deg/s"
+        return item_text
+
     def _refresh_history(self):
         """Refresh the history list."""
         self.history_list.clear()
+
+        # Test sessions with scores
         sessions = self.session_history.list_sessions()
-        
         for session in sessions:
-            item_text = session.to_display_string()
+            # Load full data to get scores
+            data = self.session_history.load_session(session.filename)
+            if data:
+                item_text = self._history_item_text(data, session)
+            else:
+                item_text = session.to_display_string()
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, session.filename)
             self.history_list.addItem(item)
-        
-        if not sessions:
+
+        # Calibration history
+        cal_dir = Path("data/calibrations")
+        if cal_dir.exists():
+            for cal_file in sorted(cal_dir.glob("*.json"), reverse=True):
+                try:
+                    import json
+                    data = json.loads(cal_file.read_text(encoding="utf-8"))
+                    name = data.get("name", cal_file.stem)
+                    created = data.get("created_at", "unknown")
+                    points = len(data.get("points", []))
+                    item_text = f"[CAL] {name} — {created} — {points} points"
+                    item = QListWidgetItem(item_text)
+                    item.setData(Qt.ItemDataRole.UserRole, str(cal_file))
+                    self.history_list.addItem(item)
+                except Exception:
+                    pass
+
+        if not sessions and not cal_dir.exists():
             self.history_list.addItem("No saved sessions found")
 
     def _load_history_session(self, item):
@@ -678,7 +808,25 @@ class MainWindow(QMainWindow):
             self.stack.setCurrentIndex(self.RESULTS_VIEW)
 
     def _delete_history_session(self):
-        """Delete the selected history session."""
+        """Delete the selected history session.
+
+        Only a signed-in admin may remove a stored score. Hiding the button is not enough --
+        the check is repeated here so the action cannot be reached another way.
+        """
+        if not self.current_user:
+            QMessageBox.warning(
+                self, "Access Denied",
+                "Sign in as an administrator to delete a session."
+            )
+            return
+        if self.current_user.role != USER_ROLE_ADMIN:
+            QMessageBox.warning(
+                self, "Access Denied",
+                "Only an administrator can delete a session. Your account is signed in as a "
+                "regular user."
+            )
+            return
+
         current = self.history_list.currentItem()
         if not current:
             QMessageBox.warning(self, "No Selection", "Please select a session to delete.")
@@ -697,6 +845,134 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             if self.session_history.delete_session(filename):
                 self._refresh_history()
+
+    def _create_admin_view(self) -> QWidget:
+        """Create the admin panel view."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        title = QLabel("⚙️ Admin Panel")
+        title.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        title.setStyleSheet("color: #e17055;")
+        layout.addWidget(title)
+
+        # User list
+        self.admin_user_list = QListWidget()
+        self.admin_user_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2d2d44;
+                color: #dfe6e9;
+                font-size: 13px;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QListWidget::item { padding: 8px; border-bottom: 1px solid #4a4a6a; }
+            QListWidget::item:selected { background-color: #4a4a6a; }
+        """)
+        self.admin_user_list.itemClicked.connect(self._on_admin_user_selected)
+        layout.addWidget(self.admin_user_list)
+
+        # User details
+        self.admin_user_details = QLabel("Select a user to view details")
+        self.admin_user_details.setStyleSheet("color: #b2bec3; padding: 10px;")
+        layout.addWidget(self.admin_user_details)
+
+        # Action buttons
+        btn_layout = QHBoxLayout()
+
+        self.admin_refresh_btn = QPushButton("🔄 Refresh")
+        self.admin_refresh_btn.clicked.connect(self._refresh_admin_users)
+        btn_layout.addWidget(self.admin_refresh_btn)
+
+        self.admin_delete_btn = QPushButton("🗑️ Delete User")
+        self.admin_delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #d63031; color: white;
+                padding: 8px 16px; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #c02020; }
+        """)
+        self.admin_delete_btn.clicked.connect(self._admin_delete_user)
+        btn_layout.addWidget(self.admin_delete_btn)
+
+        self.admin_promote_btn = QPushButton("⬆️ Make Admin")
+        self.admin_promote_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00b894; color: white;
+                padding: 8px 16px; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #00a381; }
+        """)
+        self.admin_promote_btn.clicked.connect(self._admin_promote_user)
+        btn_layout.addWidget(self.admin_promote_btn)
+
+        layout.addLayout(btn_layout)
+
+        # Back button
+        back_btn = QPushButton("Back to Home")
+        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(self.HOME_VIEW))
+        layout.addWidget(back_btn)
+
+        return widget
+
+    def _refresh_admin_users(self):
+        """Refresh the admin user list."""
+        self.admin_user_list.clear()
+        users = self.user_manager.list_users()
+        for user in users:
+            role_label = " [ADMIN]" if user.role == USER_ROLE_ADMIN else ""
+            item_text = f"{user.username}{role_label} — {user.email}"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, user.username)
+            self.admin_user_list.addItem(item)
+
+    def _on_admin_user_selected(self, item):
+        """Handle admin user selection."""
+        username = item.data(Qt.ItemDataRole.UserRole)
+        user = self.user_manager.get_user(username)
+        if user:
+            self.admin_user_details.setText(
+                f"Username: {user.username}\n"
+                f"Email: {user.email}\n"
+                f"Role: {user.role}\n"
+                f"Created: {user.created_at}\n"
+                f"Last Login: {user.last_login or 'Never'}"
+            )
+
+    def _admin_delete_user(self):
+        """Delete a user from the admin panel."""
+        current = self.admin_user_list.currentItem()
+        if not current:
+            QMessageBox.warning(self, "No Selection", "Please select a user to delete.")
+            return
+        username = current.data(Qt.ItemDataRole.UserRole)
+        if username == self.current_user.username:
+            QMessageBox.warning(self, "Error", "You cannot delete your own account.")
+            return
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Delete user '{username}'? This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.user_manager.delete_user(username):
+                self._refresh_admin_users()
+                QMessageBox.information(self, "Deleted", f"User '{username}' deleted.")
+
+    def _admin_promote_user(self):
+        """Promote a user to admin."""
+        current = self.admin_user_list.currentItem()
+        if not current:
+            QMessageBox.warning(self, "No Selection", "Please select a user to promote.")
+            return
+        username = current.data(Qt.ItemDataRole.UserRole)
+        user = self.user_manager.get_user(username)
+        if user.role == USER_ROLE_ADMIN:
+            QMessageBox.information(self, "Info", "User is already an admin.")
+            return
+        if self.user_manager.update_role(username, USER_ROLE_ADMIN):
+            self._refresh_admin_users()
+            QMessageBox.information(self, "Promoted", f"User '{username}' is now an admin.")
 
     def _apply_theme(self):
         """Apply the dark theme stylesheet."""
@@ -738,6 +1014,11 @@ class MainWindow(QMainWindow):
                 margin: -4px 0;
                 border-radius: 8px;
             }
+            QMessageBox { background-color: #2d2d44; }
+            QMessageBox QLabel {
+                color: #b2bec3;
+                font-size: 14px;
+            }
         """)
 
     def _connect_signals(self):
@@ -747,12 +1028,29 @@ class MainWindow(QMainWindow):
         self.load_profile_btn.clicked.connect(self._load_profile)
         self.start_test_btn.clicked.connect(self._start_test)
         self.calibration_widget.calibration_complete.connect(self._on_calibration_complete)
+        self.calibration_widget.calibration_stopped.connect(self._on_calibration_stopped)
         self.test_widget.test_complete.connect(self._on_test_complete)
 
     def _on_speed_changed(self, value: int):
         """Update speed label when slider changes."""
         speed = value / 10.0
         self.speed_label.setText(f"{speed:.1f}")
+
+    def _on_camera_failed(self, message: str):
+        """The camera stopped delivering frames: say so instead of showing a dead preview."""
+        self.camera_label.setText(f"📷 {message}")
+        self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.camera_label.setToolTip(message)
+        self.face_status.setText("👤 Face: — camera unavailable")
+        self.face_status.setStyleSheet("color: #ff6b6b;")
+        self.tracking_status.setText("👁️ Tracking: No camera")
+        self.tracking_status.setStyleSheet("color: #ff6b6b;")
+
+    def _on_camera_recovered(self):
+        """The camera came back: the next frame repaints the preview."""
+        self.camera_label.setToolTip("")
+        self.face_status.setText("👤 Face: waiting…")
+        self.face_status.setStyleSheet("color: #ffd93d;")
 
     def _on_frame_ready(self, frame: np.ndarray, eye_data: EyeData, capture_time: float):
         """Handle new camera frame.
@@ -811,16 +1109,88 @@ class MainWindow(QMainWindow):
 
     def _start_calibration(self):
         """Start calibration process."""
+        # Toggle button to Stop
+        self.calibrate_btn.setText("Stop Calibration")
+        self.calibrate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #d63031;
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #c02020; }
+        """)
+        self.calibrate_btn.clicked.disconnect()
+        self.calibrate_btn.clicked.connect(self._stop_calibration)
+
+        # Get pupil distance: use patient's if selected, otherwise ask
+        pd_mm = self._resolve_pupil_distance_mm()
+        if pd_mm <= 0:
+            self._reset_calibrate_button()
+            return
+        self._pupil_distance_mm = pd_mm
         self.stack.setCurrentWidget(self.calibration_widget)
         self.calibration_widget.showFullScreen()
         self.calibration_widget.start_calibration()
 
+    def _resolve_pupil_distance_mm(self) -> float:
+        """Use the selected patient's IPD, otherwise prompt. Returns 0.0 if cancelled."""
+        if self.current_patient and self.current_patient.pupil_distance_mm > 0:
+            return self.current_patient.pupil_distance_mm
+
+        from PyQt6.QtWidgets import QInputDialog
+        pd, ok = QInputDialog.getDouble(
+            self, "Pupil Distance",
+            "Enter pupil distance (cm):",
+            value=6.3, min=4.0, max=8.0, decimals=2
+        )
+        return pd * 10 if ok else 0.0  # Convert cm to mm
+
+    def _stop_calibration(self):
+        """Stop calibration early."""
+        self.calibration_widget.stop_calibration()
+
+    def _on_calibration_stopped(self):
+        """Handle early calibration stop."""
+        self._reset_calibrate_button()
+        self.calibration_widget.showNormal()
+        self.stack.setCurrentIndex(self.HOME_VIEW)
+        # Measured error, not a score. A percentage here reads as a validated grade, and nothing
+        # in this software is clinically validated yet (see docs/BACKLOG.md A-6).
+        held_out = None
+        if self.gaze_estimator.is_calibrated:
+            held_out = self.gaze_estimator.get_calibration_quality().get('cv_error_px')
+        status = "🎯 Calibration: Partial"
+        if held_out is not None:
+            status = f"{status} ({held_out:.1f} px held-out)"
+        self.calibration_status.setText(status)
+        self.calibration_status.setStyleSheet("color: #ffd93d;")
+
+    def _reset_calibrate_button(self):
+        """Reset button to Start state."""
+        self.calibrate_btn.setText("Start Calibration")
+        self.calibrate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c5ce7;
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #5f4dd0; }
+        """)
+        self.calibrate_btn.clicked.disconnect()
+        self.calibrate_btn.clicked.connect(self._start_calibration)
+
     def _on_calibration_complete(self):
         """Handle calibration completion."""
+        self._reset_calibrate_button()
         self.calibration_widget.showNormal()
         self.stack.setCurrentIndex(self.HOME_VIEW)
         self.calibration_status.setText("🎯 Calibration: ✓ Done")
         self.calibration_status.setStyleSheet("color: #00b894;")
+
 
     def _save_profile(self):
         """Save calibration profile."""
@@ -852,6 +1222,24 @@ class MainWindow(QMainWindow):
 
     def _start_test(self):
         """Start the eye movement test."""
+        # Uncalibrated gaze is not accurate enough to score: the fallback mapping treats the
+        # full camera width as the full gaze range, so the estimate lands hundreds of pixels
+        # from the target. That is worth saying -- but it is the operator's call whether to
+        # proceed, so this warns and records the run as uncalibrated rather than blocking it.
+        if not self.gaze_estimator.is_calibrated:
+            reply = QMessageBox.question(
+                self, "Not Calibrated",
+                "Calibration has not been completed.\n\n"
+                "Uncalibrated gaze estimates are not accurate enough to score and will "
+                "land far from the target. You can run the test anyway, but the result "
+                "will be recorded as uncalibrated and is not a valid measurement.\n\n"
+                "Run the test anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
         pattern_index = self.pattern_combo.currentIndex()
         
         # Check if it's a saccade test (indices 6 and 7)
@@ -881,10 +1269,23 @@ class MainWindow(QMainWindow):
 
         self.stack.setCurrentWidget(self.test_widget)
         self.test_widget.showFullScreen()
-        self.test_widget.start_test(config)
+        self.test_widget.start_test(config, pupil_distance_mm=self._resolve_pupil_distance_mm())
     
     def _start_saccade_test(self, test_type: SaccadeTestType):
         """Start a saccade test."""
+        if not self.gaze_estimator.is_calibrated:
+            reply = QMessageBox.question(
+                self, "Not Calibrated",
+                "Calibration has not been completed.\n\n"
+                "Uncalibrated gaze estimates are not accurate enough to score. "
+                "You can run the test anyway, but the result will be recorded as "
+                "uncalibrated and is not a valid measurement.\n\n"
+                "Run the test anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
         config = SaccadeTestConfig(
             test_type=test_type,
             num_trials=20,
@@ -913,11 +1314,13 @@ class MainWindow(QMainWindow):
         except Exception as e:
             save_message = f"\n[Warning: Failed to auto-save results: {e}]"
 
+
         # Generate and display report
         report = generate_report(result)
         self.results_text.setText(report + save_message)
 
         self.stack.setCurrentIndex(self.RESULTS_VIEW)
+
 
     def _on_saccade_complete(self, result: SaccadeTestResult):
         """Handle saccade test completion."""
@@ -1154,6 +1557,16 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+
+    # Initialize PHI encryption key for patient data storage
+    try:
+        from crypto import init_key, get_fernet, MissingEncryptionKey
+        try:
+            get_fernet()
+        except MissingEncryptionKey:
+            init_key()
+    except Exception as e:
+        print(f"Warning: Could not initialize encryption key: {e}")
 
     window = MainWindow()
     window.showMaximized()
