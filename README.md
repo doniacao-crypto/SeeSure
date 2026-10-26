@@ -1,6 +1,8 @@
-# EyeExam 👁️
+# SeeSure 👁️
 
 **Clinical-grade eye movement assessment using standard webcam hardware.**
+
+The application and Python package are still named `EyeExam`; the repository is `SeeSure`.
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![PyQt6](https://img.shields.io/badge/UI-PyQt6-green.svg)](https://pypi.org/project/PyQt6/)
@@ -36,8 +38,8 @@ EyeExam is a desktop application that performs professional eye movement assessm
 
 ```bash
 # Clone the repository
-git clone https://github.com/ibetterai/EyeExam.git
-cd EyeExam
+git clone https://github.com/doniacao-crypto/SeeSure.git
+cd SeeSure
 
 # Create virtual environment
 python -m venv venv
