@@ -1,4 +1,4 @@
-# EyeExam Coordination Tracker
+# SightPath Coordination Tracker
 
 ## Overview
 

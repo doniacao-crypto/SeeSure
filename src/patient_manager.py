@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
-from .crypto import encrypt_json, decrypt_json, init_key, MissingEncryptionKey
+from crypto import encrypt_json, decrypt_json, init_key, MissingEncryptionKey
 from typing import List, Optional, Dict, Any
 
 
@@ -23,6 +23,7 @@ class Patient:
     gender: str = ""
     dominant_eye: str = ""
     wears_glasses: bool = False
+    pupil_distance_mm: float = 0.0  # Legacy field for backward compatibility with old .phi files
     notes: str = ""
     created_at: str = ""
     updated_at: str = ""

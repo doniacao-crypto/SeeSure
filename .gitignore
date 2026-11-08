@@ -88,3 +88,6 @@ logs/security/
 
 # Local-only working docs (not shared)
 docs/local/
+
+# Patient records, user accounts and local run data (PHI - never commit)
+data/

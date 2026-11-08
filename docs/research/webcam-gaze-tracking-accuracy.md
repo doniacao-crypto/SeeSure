@@ -2,20 +2,20 @@
 title: Single-Webcam Gaze Tracking — Accuracy Limits, Geometry, and Clinical Viability
 date: 2026-07-14
 status: research finding
-scope: EyeExam gaze pipeline (MediaPipe + PyQt, one RGB webcam)
+scope: SightPath gaze pipeline (MediaPipe + PyQt, one RGB webcam)
 method: 46-agent parallel deep research; every claim adversarially fact-checked (36 verified, 1 refuted and dropped)
 ---
 
-> **How to read this.** This answers why EyeExam's accuracy plateaued despite many algorithm
+> **How to read this.** This answers why SightPath's accuracy plateaued despite many algorithm
 > changes, where the real ceiling is, and what to build the product on. Claims carry sources.
 > Where the literature is thin, vendor-authored, or contradictory, the report says so.
 >
 > **Empirically confirmed against this codebase** (see `Verification` at the end) — the headline
 > root cause was reproduced with a test harness, not just asserted.
 
-# EyeExam: Why the Eye‑Tracking Plateau Is Real, Where the Ceiling Actually Is, and How to Break Through
+# SightPath: Why the Eye‑Tracking Plateau Is Real, Where the Ceiling Actually Is, and How to Break Through
 
-**Audience:** EyeExam engineering team
+**Audience:** SightPath engineering team
 **Scope:** single RGB webcam (Mac Studio external / MacBook built‑in) + MediaPipe + PyQt, for child attention assessment
 **Status of evidence:** every number below is from a fact‑checked source pack; where the literature is thin, vendor‑authored, or contradictory, I say so explicitly.
 
@@ -391,7 +391,7 @@ Webcam (1080p, 60 fps if available)
 | **OpenFace 3.0** (CMU, arXiv 2506.02891, 2025) | PyTorch rewrite, active | 2.56° MPIIGaze *within‑dataset* | ✅ MPS | Worth evaluating; check its license before committing. |
 | **Purely geometric 3‑D eye model** (§Q2) | Yours | 3.5–5° with per‑person calibration | ✅ trivially | **The pragmatic answer.** No license risk. |
 
-**The licensing recommendation, stated plainly:** every high‑accuracy pretrained gaze model in the literature is trained on a research‑only dataset (ETH‑XGaze, Gaze360, MPIIGaze, GazeCapture). **If EyeExam is going to be a commercial clinical product, you cannot ship those weights.** Your options are (a) train your own on data you own or license, (b) negotiate a commercial license with ETH Zürich, or (c) **build the geometric 3‑D eye‑model pipeline (§Q2), which has no license encumbrance and lands at 3.5–5°** — right where I told you to target in §1. **I recommend (c) for v1, with (a) as the medium‑term play** — and note that if you're going to collect child data anyway for a normative database, you are collecting the training set at the same time.
+**The licensing recommendation, stated plainly:** every high‑accuracy pretrained gaze model in the literature is trained on a research‑only dataset (ETH‑XGaze, Gaze360, MPIIGaze, GazeCapture). **If SightPath is going to be a commercial clinical product, you cannot ship those weights.** Your options are (a) train your own on data you own or license, (b) negotiate a commercial license with ETH Zürich, or (c) **build the geometric 3‑D eye‑model pipeline (§Q2), which has no license encumbrance and lands at 3.5–5°** — right where I told you to target in §1. **I recommend (c) for v1, with (a) as the medium‑term play** — and note that if you're going to collect child data anyway for a normative database, you are collecting the training set at the same time.
 
 ### Why this design on macOS
 
@@ -444,7 +444,7 @@ Maron et al. (*Neurosci Biobehav Rev* 2021) independently found more intrusive s
 ### Do NOT build the product on these ❌
 
 - **Microsaccades.** Needs 240–500 Hz *and* sub‑degree precision. Not happening.
-- **Saccade peak velocity / the main sequence.** Not recoverable at 30 or 50 Hz at *any* amplitude ≤60°; at 60 Hz only ≥55°. Even spline upsampling only helps from 120 Hz. **If any current EyeExam screen shows a peak velocity in °/s, delete it — it is a fabricated number.**
+- **Saccade peak velocity / the main sequence.** Not recoverable at 30 or 50 Hz at *any* amplitude ≤60°; at 60 Hz only ≥55°. Even spline upsampling only helps from 120 Hz. **If any current SightPath screen shows a peak velocity in °/s, delete it — it is a fabricated number.**
 - **Per‑trial saccade latency or duration in milliseconds.** Quantised to 0/33/67 ms.
 - **Absolute fixation durations** as clinical values (±17 ms on a 200–300 ms fixation, plus systematic short bias). Group/condition *comparisons* are fine; absolute values are not.
 - **Intrusive saccades during prolonged fixation** — the g = 1.11 measure — **as classically defined.** You would need to redesign it as a fixation‑with‑peripheral‑distractor variant, and then it is a *different* measure with an *unknown* effect size.

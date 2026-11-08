@@ -1,4 +1,4 @@
-# Clinical Sign-off Register — EyeExam
+# Clinical Sign-off Register — SightPath
 
 Every clinical assertion the software currently makes. Nothing user-facing and clinical
 ships without a verdict from the **Clinical Lead** (see ADR 0003).
@@ -73,7 +73,7 @@ numbers and are **unverified** (ADR 0002).
 
 ## E. Caveat: instrument mismatch (applies to ALL of the above)
 
-All ranges above are **lab-eye-tracker-derived**. EyeExam metrics are **webcam-derived**
+All ranges above are **lab-eye-tracker-derived**. SightPath metrics are **webcam-derived**
 at lower sampling rate and higher noise. Even a correctly-transcribed norm may misclassify
 a healthy patient on a webcam. Clinical Lead to note, per metric, whether the lab range is
 usable as-is on webcam, needs an offset, or must be replaced by pilot-collected norms.

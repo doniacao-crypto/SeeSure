@@ -1,6 +1,8 @@
-# EyeExam 👁️
+# SeeSure 👁️
 
 **Clinical-grade eye movement assessment using standard webcam hardware.**
+
+The repository is `SeeSure`; the application is `SightPath` (the Python package is still `EyeExam`).
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![PyQt6](https://img.shields.io/badge/UI-PyQt6-green.svg)](https://pypi.org/project/PyQt6/)
@@ -11,7 +13,7 @@
 
 ## Overview
 
-EyeExam is a desktop application that performs professional eye movement assessments using a standard webcam. It provides clinical-grade metrics typically requiring expensive specialized equipment.
+SightPath is a desktop application that performs professional eye movement assessments using a standard webcam. It provides clinical-grade metrics typically requiring expensive specialized equipment.
 
 ### Key Features
 
@@ -36,8 +38,8 @@ EyeExam is a desktop application that performs professional eye movement assessm
 
 ```bash
 # Clone the repository
-git clone https://github.com/ibetterai/EyeExam.git
-cd EyeExam
+git clone https://github.com/doniacao-crypto/SeeSure.git
+cd SeeSure
 
 # Create virtual environment
 python -m venv venv
@@ -57,9 +59,15 @@ python src/main_app.py
 ### 1. Calibration
 
 1. Launch the application
-2. Click **"Start Calibration"**
-3. Follow the dots with your eyes (9 points)
-4. Wait for quality confirmation
+2. If the machine has more than one camera, choose the one facing the patient when the
+   app asks (the choice is remembered; **🔄 Change camera** in the left panel switches it
+   later)
+3. Click **"Start Calibration"**
+4. Work through the three head-pose levels (head centred, then slightly left, then slightly
+   right). Between levels a countdown gives the patient 3 seconds to move their head before
+   the next level starts — hold the new pose once the count reaches zero.
+5. Follow the 9 dots in each level with your eyes
+6. Read the calibration report (held-out error and head-pose spread) when it finishes
 
 ### 2. Running Tests
 
@@ -92,6 +100,20 @@ After each test:
 | Saccade Rate      | Catch-up saccades per second      | < 1 Hz       |
 | BCEA              | Fixation stability area           | < 1 deg²     |
 | Microsaccade Rate | Small fixation movements          | 1-2 Hz       |
+
+### What the report shows
+
+| Reading          | What it means                                                        |
+| ---------------- | -------------------------------------------------------------------- |
+| Tracking Rate    | Share of frames that produced a usable gaze estimate (data validity) |
+| Direction Match  | How often the gaze moved in the same direction as the target         |
+| Speed Match      | How closely the gaze speed matched the target speed                  |
+| Pursuit Gain     | Clinical: eye velocity / target velocity                             |
+| Accuracy         | Clinical: RMS error in degrees of visual angle                       |
+
+The thresholds are **provisional and not clinically validated** — see
+`docs/clinical/sign-off-register.md`. A low pursuit gain reflects the gaze estimate's own
+gain as much as the subject's tracking, so read it with the tracking rate next to it.
 
 ---
 

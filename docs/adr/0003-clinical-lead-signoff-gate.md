@@ -6,7 +6,7 @@
 
 ## Context
 
-EyeExam is both diagnostic and training software. The product concept and features
+SightPath is both diagnostic and training software. The product concept and features
 originate from a practising optometrist who runs a clinic (the "Clinical Lead"). However,
 the concrete clinical assertions in the code — normative ranges, pass/fail thresholds,
 interpretation text like "may indicate executive dysfunction" — were written by the

@@ -558,7 +558,8 @@ class MetricsCalculator:
     def calculate_pursuit_metrics(self,
                                   target_positions: np.ndarray,
                                   gaze_positions: np.ndarray,
-                                  timestamps: np.ndarray) -> PursuitMetrics:
+                                  timestamps: np.ndarray,
+                                  total_frames: Optional[int] = None) -> PursuitMetrics:
         """
         Calculate comprehensive smooth pursuit metrics.
 
@@ -566,6 +567,8 @@ class MetricsCalculator:
             target_positions: Nx2 array of target positions in pixels
             gaze_positions: Nx2 array of gaze positions in pixels
             timestamps: N array of timestamps in seconds
+            total_frames: Frames recorded in the run, including those with no usable gaze
+                estimate. Used for the tracking rate; omit it and every frame counts as valid.
 
         Returns:
             PursuitMetrics object with all calculated metrics
@@ -583,9 +586,13 @@ class MetricsCalculator:
         saccades = self.detect_saccades(gaze_positions, timestamps)
         catch_up_saccade_count = len(saccades)
 
-        # Calculate tracking ratio (assume all frames are valid for now)
-        # In practice, this would be based on face detection success
-        tracking_ratio = 1.0
+        # Tracking ratio: the share of recorded frames that produced a usable gaze estimate.
+        # Reporting 1.0 regardless of what was actually tracked would claim perfect data
+        # capture on every run.
+        if total_frames:
+            tracking_ratio = min(1.0, len(gaze_positions) / float(total_frames))
+        else:
+            tracking_ratio = 1.0
 
         # Phase lag estimation using cross-correlation
         phase_lag_ms = self.calculate_phase_lag(target_positions, gaze_positions, timestamps)
