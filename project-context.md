@@ -1,8 +1,8 @@
-# Project Context — EyeExam
+# Project Context — SightPath
 
 ## Overview
 
-**EyeExam** is a clinical eye movement assessment application built with PyQt6 and MediaPipe. It provides automated screening for oculomotor function including smooth pursuit, saccades, fixation stability, and gaze accuracy validation.
+**SightPath** is a clinical eye movement assessment application built with PyQt6 and MediaPipe. It provides automated screening for oculomotor function including smooth pursuit, saccades, fixation stability, and gaze accuracy validation.
 
 ## Technology Stack
 
@@ -95,7 +95,7 @@
 ## File Structure
 
 ```
-EyeExam/
+SightPath/
 ├── src/
 │   ├── main_app.py
 │   ├── widgets/

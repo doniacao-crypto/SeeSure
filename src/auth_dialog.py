@@ -24,12 +24,12 @@ class LoginDialog(QDialog):
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setWindowTitle("EyeExam - Login")
+        self.setWindowTitle("SightPath - Login")
         self.setFixedSize(400, 250)
 
         layout = QVBoxLayout(self)
 
-        title = QLabel("EyeExam Login")
+        title = QLabel("SightPath Login")
         title.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
@@ -106,7 +106,7 @@ class SignupDialog(QDialog):
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setWindowTitle("EyeExam - Create Account")
+        self.setWindowTitle("SightPath - Create Account")
         self.setFixedSize(450, 350)
 
         layout = QVBoxLayout(self)
@@ -178,7 +178,7 @@ class ForgotPasswordDialog(QDialog):
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setWindowTitle("EyeExam - Forgot Password")
+        self.setWindowTitle("SightPath - Forgot Password")
         self.setFixedSize(400, 200)
 
         layout = QVBoxLayout(self)

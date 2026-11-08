@@ -1,5 +1,5 @@
 /**
- * EyeExam Waitlist Worker
+ * SightPath Waitlist Worker
  * Stores email signups in Cloudflare D1 database
  */
 

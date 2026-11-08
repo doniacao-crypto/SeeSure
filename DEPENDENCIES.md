@@ -1,4 +1,4 @@
-# DEPENDENCIES — EyeExam
+# DEPENDENCIES — SightPath
 
 External contracts this project depends on but does not control.
 One row per contract. Status is honest, not aspirational.

@@ -2,7 +2,7 @@
 
 **Clinical-grade eye movement assessment using standard webcam hardware.**
 
-The application and Python package are still named `EyeExam`; the repository is `SeeSure`.
+The repository is `SeeSure`; the application is `SightPath` (the Python package is still `EyeExam`).
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![PyQt6](https://img.shields.io/badge/UI-PyQt6-green.svg)](https://pypi.org/project/PyQt6/)
@@ -13,7 +13,7 @@ The application and Python package are still named `EyeExam`; the repository is 
 
 ## Overview
 
-EyeExam is a desktop application that performs professional eye movement assessments using a standard webcam. It provides clinical-grade metrics typically requiring expensive specialized equipment.
+SightPath is a desktop application that performs professional eye movement assessments using a standard webcam. It provides clinical-grade metrics typically requiring expensive specialized equipment.
 
 ### Key Features
 
@@ -59,12 +59,15 @@ python src/main_app.py
 ### 1. Calibration
 
 1. Launch the application
-2. Click **"Start Calibration"**
-3. Work through the three head-pose levels (head centred, then slightly left, then slightly
+2. If the machine has more than one camera, choose the one facing the patient when the
+   app asks (the choice is remembered; **🔄 Change camera** in the left panel switches it
+   later)
+3. Click **"Start Calibration"**
+4. Work through the three head-pose levels (head centred, then slightly left, then slightly
    right). Between levels a countdown gives the patient 3 seconds to move their head before
    the next level starts — hold the new pose once the count reaches zero.
-4. Follow the 9 dots in each level with your eyes
-5. Read the calibration report (held-out error and head-pose spread) when it finishes
+5. Follow the 9 dots in each level with your eyes
+6. Read the calibration report (held-out error and head-pose spread) when it finishes
 
 ### 2. Running Tests
 

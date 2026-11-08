@@ -1,4 +1,4 @@
-# Project Notes — EyeExam
+# Project Notes — SightPath
 
 ## Quick Context
 
@@ -135,5 +135,5 @@ src/
 
 ## Links
 
-- GitHub: https://github.com/ibetterai/EyeExam
+- GitHub: https://github.com/ibetterai/SightPath
 - Telegram: -1003865868299

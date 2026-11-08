@@ -15,6 +15,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from eye_tracker import EyeTracker, EyeData
+from camera_devices import CameraDevice, enumerate_cameras
+
+
+class CameraDiscoveryThread(QThread):
+    """Finds the cameras on this machine without blocking the UI.
+
+    Probing a camera opens it, so this cannot run on the UI thread.
+    """
+
+    cameras_found = pyqtSignal(list)
+
+    def run(self):
+        try:
+            cameras = enumerate_cameras()
+        except Exception:
+            cameras = []
+        self.cameras_found.emit(cameras)
 
 
 class CameraThread(QThread):
@@ -31,9 +48,11 @@ class CameraThread(QThread):
     # How long to wait before reopening a device that stopped delivering frames.
     REOPEN_DELAY_MS = 2000
 
-    def __init__(self, eye_tracker: EyeTracker):
+    def __init__(self, eye_tracker: EyeTracker, device_index: int = 0):
         super().__init__()
         self.eye_tracker = eye_tracker
+        # Which camera to open. A machine can expose several, and the operator picks.
+        self.device_index = device_index
         self.running = False
         self.cap = None
 
@@ -43,7 +62,7 @@ class CameraThread(QThread):
 
     def _open_camera(self):
         """Open the webcam, or return None if it cannot be opened."""
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(self.device_index)
         if not cap.isOpened():
             cap.release()
             return None

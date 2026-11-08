@@ -1,4 +1,4 @@
-# CONTEXT — EyeExam domain language
+# CONTEXT — SightPath domain language
 
 The vocabulary of this project. Terms here mean exactly what this file says they mean,
 in code, in specs, and in conversation. If a term drifts, fix it here first.

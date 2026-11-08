@@ -1,10 +1,10 @@
-# SCOPE — EyeExam
+# SCOPE — SightPath
 
 _Last updated: 2026-07-21 (via `/setup` Phase 0)_
 
 ## Problem & Users
 
-EyeExam performs eye-movement assessment (smooth pursuit, saccades, fixation) using
+SightPath performs eye-movement assessment (smooth pursuit, saccades, fixation) using
 standard webcam hardware, replacing equipment that normally costs orders of magnitude
 more. It is both a **diagnostic** and a **training** product.
 

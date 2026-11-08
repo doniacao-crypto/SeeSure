@@ -1,4 +1,4 @@
-# EyeExam — Tracking Backlog
+# SightPath — Tracking Backlog
 
 Single source of truth for open work surfaced during setup + grilling. Complete top to
 bottom within each priority band. Check items off as done; link the PR/commit.

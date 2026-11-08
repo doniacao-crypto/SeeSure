@@ -18,11 +18,12 @@ from PyQt6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QCheckBox,
     QListWidget, QListWidgetItem, QTabWidget
 )
-from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtCore import Qt, QTimer, QSize, QSettings
 from PyQt6.QtGui import QImage, QPixmap, QFont
 
 from eye_tracker import EyeTracker, EyeData
 from gaze_estimator import GazeEstimator
+from camera_devices import CameraDevice
 from smooth_pursuit_test import (
     TestConfig, TargetPattern, TestResult, generate_report
 )
@@ -36,7 +37,10 @@ from user_manager import UserManager, User, USER_ROLE_ADMIN
 from auth_dialog import LoginDialog
 
 # Import UI widgets from separate modules
-from widgets import CameraThread, CalibrationWidget, TestWidget, SaccadeWidget, ValidationWidget
+from widgets import (
+    CameraThread, CameraDiscoveryThread, CalibrationWidget, TestWidget,
+    SaccadeWidget, ValidationWidget,
+)
 
 
 class MainWindow(QMainWindow):
@@ -54,7 +58,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Eye Movement Assessment System")
+        self.setWindowTitle("SightPath — Eye Movement Assessment")
         self.setMinimumSize(1200, 800)
 
         # Core components
@@ -66,20 +70,18 @@ class MainWindow(QMainWindow):
         self.user_manager = UserManager()
         self.current_user: Optional[User] = None
 
-        # Camera thread
-        self.camera_thread = CameraThread(self.eye_tracker)
-        self.camera_thread.frame_ready.connect(self._on_frame_ready)
-        self.camera_thread.camera_failed.connect(self._on_camera_failed)
-        self.camera_thread.camera_recovered.connect(self._on_camera_recovered)
+        # Camera thread. The capture is opened after the camera probe, not before: the
+        # probe takes the devices over and a running capture loses its stream.
+        self._discovery_thread: Optional[CameraDiscoveryThread] = None
+        self._camera_purpose = ""
+        self._capture_started = False
+        self.camera_thread = self._create_camera_thread(self._saved_camera_index() or 0)
 
         # Current eye data
         self.current_eye_data: Optional[EyeData] = None
 
         self._setup_ui()
         self._connect_signals()
-
-        # Start camera
-        self.camera_thread.start()
 
     def _setup_ui(self):
         """Set up the user interface."""
@@ -129,6 +131,154 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.stack)
         self._apply_theme()
 
+    @staticmethod
+    def _camera_settings() -> QSettings:
+        """Where the chosen camera is remembered between runs."""
+        return QSettings("SightPath", "SightPath")
+
+    def _saved_camera_index(self) -> Optional[int]:
+        """The camera the operator chose last time, if any."""
+        value = self._camera_settings().value("camera_index", None)
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _create_camera_thread(self, device_index: int) -> CameraThread:
+        """Build a capture thread for a camera and wire it to the UI."""
+        thread = CameraThread(self.eye_tracker, device_index=device_index)
+        thread.frame_ready.connect(self._on_frame_ready)
+        thread.camera_failed.connect(self._on_camera_failed)
+        thread.camera_recovered.connect(self._on_camera_recovered)
+        return thread
+
+    def begin_camera_discovery(self):
+        """Find the cameras, let the operator pick one, then open the capture.
+
+        The probe opens each camera, so the capture must not be holding a device at the
+        same time: two handles on one camera make the running stream fail. That is why the
+        capture is opened after the probe rather than before it.
+        """
+        self._request_camera_list("startup")
+        # If the probe never comes back, the app must still open a camera.
+        QTimer.singleShot(5000, self._start_capture_if_idle)
+
+    def _start_capture_if_idle(self):
+        """Open the capture if the discovery did not already do it."""
+        if not self._capture_started:
+            self._use_camera(self.camera_thread.device_index, start=True)
+
+    def _request_camera_list(self, purpose: str = "manual"):
+        """Probe the cameras in the background; `purpose` says what to do with the result."""
+        self._camera_purpose = purpose
+        self._discovery_thread = CameraDiscoveryThread()
+        self._discovery_thread.cameras_found.connect(self._on_cameras_found)
+        self._discovery_thread.start()
+
+    def _on_cameras_found(self, cameras):
+        purpose = self._camera_purpose
+        self._camera_purpose = ""
+
+        if purpose == "startup":
+            self._use_camera(self._resolve_startup_camera(cameras), start=True)
+            return
+
+        # The operator asked for the chooser.
+        if not cameras:
+            QMessageBox.warning(
+                self, "No Camera Found",
+                "No camera could be opened. Check that the webcam is connected and not in use "
+                "by another application."
+            )
+            self._start_capture_if_idle()
+            return
+        if len(cameras) == 1:
+            QMessageBox.information(
+                self, "Camera",
+                f"Only one camera was found: {cameras[0].label}"
+            )
+            self._use_camera(cameras[0].index, start=True)
+            return
+
+        chosen = self._ask_which_camera(cameras)
+        self._use_camera(
+            chosen if chosen is not None else self.camera_thread.device_index,
+            start=True,
+        )
+
+    def _resolve_startup_camera(self, cameras) -> int:
+        """Decide which camera to open when the app starts."""
+        saved = self._saved_camera_index()
+        if len(cameras) <= 1:
+            if cameras:
+                return cameras[0].index
+            return saved if saved is not None else 0
+        if saved is not None:
+            if any(c.index == saved for c in cameras):
+                return saved
+            # The remembered camera is gone (unplugged, or another machine). Fall back to
+            # one that exists rather than leaving the app without a camera.
+            return cameras[0].index
+        # More than one camera and no earlier choice: ask.
+        chosen = self._ask_which_camera(cameras)
+        return chosen if chosen is not None else cameras[0].index
+
+    def _ask_which_camera(self, cameras) -> Optional[int]:
+        """Show the chooser; returns the selected camera index, or None if cancelled."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Choose Camera")
+        dialog.setMinimumWidth(420)
+        layout = QVBoxLayout(dialog)
+
+        layout.addWidget(QLabel("Which camera should be used for this session?"))
+
+        combo = QComboBox()
+        for device in cameras:
+            combo.addItem(device.label, device.index)
+        current = combo.findData(self.camera_thread.device_index)
+        if current >= 0:
+            combo.setCurrentIndex(current)
+        layout.addWidget(combo)
+
+        buttons = QHBoxLayout()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        buttons.addWidget(cancel_btn)
+        buttons.addStretch()
+        use_btn = QPushButton("Use this camera")
+        use_btn.setDefault(True)
+        use_btn.clicked.connect(dialog.accept)
+        buttons.addWidget(use_btn)
+        layout.addLayout(buttons)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return combo.currentData()
+        return None
+
+    def _use_camera(self, device_index: int, start: bool = False):
+        """Switch the capture to a different camera and remember the choice."""
+        if device_index != self.camera_thread.device_index:
+            if self._capture_started:
+                self.camera_thread.stop()
+            self.camera_thread = self._create_camera_thread(device_index)
+            self._capture_started = False
+        # The remembered camera is updated even when the capture was already on it: the
+        # stored value can be stale (the camera was unplugged) and must not stay wrong.
+        self._camera_settings().setValue("camera_index", device_index)
+        if start and not self._capture_started:
+            self._capture_started = True
+            self.camera_thread.start()
+
+    def _show_camera_chooser(self):
+        """Operator-driven camera selection."""
+        # The probe takes the cameras over, so the capture is closed first.
+        if self._capture_started:
+            self.camera_thread.stop()
+            self._capture_started = False
+        self._request_camera_list("manual")
+
     def _create_left_panel(self) -> QFrame:
         """Create the left control panel with camera preview and controls."""
         panel = QFrame()
@@ -148,6 +298,23 @@ class MainWindow(QMainWindow):
         self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.camera_label)
         self._camera_initialized = False
+
+        # Camera selection: a machine can have several, and the operator picks the one
+        # facing the patient.
+        self.camera_select_btn = QPushButton("🔄 Change camera")
+        self.camera_select_btn.setToolTip("Choose which camera to use")
+        self.camera_select_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a4a6a;
+                color: white;
+                padding: 6px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #5a5a7a; }
+        """)
+        self.camera_select_btn.clicked.connect(self._show_camera_chooser)
+        layout.addWidget(self.camera_select_btn)
 
         # Status indicators (pinned above scroll area)
         layout.addWidget(self._create_status_group())
@@ -500,11 +667,17 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        title = QLabel("Eye Movement Assessment System")
+        title = QLabel("SightPath")
         title.setFont(QFont("Arial", 28, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("color: #74b9ff;")
         layout.addWidget(title)
+
+        subtitle = QLabel("Clinical eye movement assessment")
+        subtitle.setFont(QFont("Arial", 14))
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet("color: #dfe6e9;")
+        layout.addWidget(subtitle)
 
         instructions = QLabel(
             "1. Ensure good lighting and face the camera\n"
@@ -1549,6 +1722,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Clean up on close."""
+        if self._discovery_thread is not None and self._discovery_thread.isRunning():
+            self._discovery_thread.wait(2000)
         self.camera_thread.stop()
         self.eye_tracker.release()
         event.accept()
@@ -1570,6 +1745,10 @@ def main():
 
     window = MainWindow()
     window.showMaximized()
+
+    # Find the cameras once the window is up; with more than one the operator is asked
+    # which to use.
+    QTimer.singleShot(0, window.begin_camera_discovery)
 
     # Ensure window comes to front on macOS
     window.raise_()
