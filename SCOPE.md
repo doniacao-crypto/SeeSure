@@ -1,19 +1,19 @@
-# SCOPE — EyeExam
+# SCOPE — SightPath
 
 _Last updated: 2026-07-21 (via `/setup` Phase 0)_
 
 ## Problem & Users
 
-EyeExam performs eye-movement assessment (smooth pursuit, saccades, fixation) using
+SightPath performs eye-movement assessment (smooth pursuit, saccades, fixation) using
 standard webcam hardware, replacing equipment that normally costs orders of magnitude
 more. It is both a **diagnostic** and a **training** product.
 
 Two distinct users:
 
-| User | Role | Needs |
-|------|------|-------|
+| User                            | Role                                                                | Needs                                                             |
+| ------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Optometrist / neuro-optometrist | Administers assessment, interprets results, writes the prescription | Clinical accuracy, reports, patient records, normative comparison |
-| Patient / client | Performs prescribed training at home, follows up | Simple guided sessions, progress feedback, low setup friction |
+| Patient / client                | Performs prescribed training at home, follows up                    | Simple guided sessions, progress feedback, low setup friction     |
 
 The clinician prescribes; the patient trains. Both halves must exist for the product
 to be useful — a clinician-only tool is a measuring instrument, not a product.
@@ -47,14 +47,14 @@ clinician would defend, at a stated, measured tolerance rather than an assumed o
 
 ## UNCERTAIN — needs a decision, owner, and date
 
-| Item | Question | Owner | By |
-|------|----------|-------|-----|
-| ~~Platform target~~ | **RESOLVED 2026-07-23 — ADR 0001.** Hybrid: one TS+MediaPipe web tracking client wrapped to all targets; Python server reuses today's analysis modules over gaze-sample streams (not video). Pilot runs on the existing desktop app. | Huilin | ✓ |
-| Pilot definition | Who runs the pilot, how many patients, what result makes it a pass? | Huilin + Clinical Lead | TBD (A-10) |
-| ~~Regulatory (data)~~ | **RESOLVED — ADR 0005.** All jurisdictions → design to HIPAA+GDPR+PIPL superset. Pilot stays local. | Huilin | ✓ |
-| Regulatory (device) | FDA SaMD / CE / NMPA classification for real patient care beyond pilot. | Huilin | TBD (A-18) |
-| ~~Accuracy tolerance~~ | **PROVISIONAL — ADR 0004.** ≤1.5° mean / ≤2.5° worst at 60cm. Clinical Lead confirms (A-3). | Huilin + Clinical Lead | ◐ |
-| ~~Normative data provenance~~ | **RESOLVED — ADR 0002.** Unverified; illustrative-only until literature pass (A-1) + register (A-6). | Huilin + Clinical Lead | ✓ |
+| Item                          | Question                                                                                                                                                                                                                             | Owner                  | By         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- | ---------- |
+| ~~Platform target~~           | **RESOLVED 2026-07-23 — ADR 0001.** Hybrid: one TS+MediaPipe web tracking client wrapped to all targets; Python server reuses today's analysis modules over gaze-sample streams (not video). Pilot runs on the existing desktop app. | Huilin                 | ✓          |
+| Pilot definition              | Who runs the pilot, how many patients, what result makes it a pass?                                                                                                                                                                  | Huilin + Clinical Lead | TBD (A-10) |
+| ~~Regulatory (data)~~         | **RESOLVED — ADR 0005.** All jurisdictions → design to HIPAA+GDPR+PIPL superset. Pilot stays local.                                                                                                                                  | Huilin                 | ✓          |
+| Regulatory (device)           | FDA SaMD / CE / NMPA classification for real patient care beyond pilot.                                                                                                                                                              | Huilin                 | TBD (A-18) |
+| ~~Accuracy tolerance~~        | **PROVISIONAL — ADR 0004.** ≤1.5° mean / ≤2.5° worst at 60cm. Clinical Lead confirms (A-3).                                                                                                                                          | Huilin + Clinical Lead | ◐          |
+| ~~Normative data provenance~~ | **RESOLVED — ADR 0002.** Unverified; illustrative-only until literature pass (A-1) + register (A-6).                                                                                                                                 | Huilin + Clinical Lead | ✓          |
 
 ## Trajectory
 

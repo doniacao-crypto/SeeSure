@@ -133,12 +133,13 @@ def build_calibration_model(calibration_points):
 **What**: Replace MediaPipe iris-based estimation with trained CNN models.
 
 **Options**:
-| Model | Accuracy | Notes |
-|-------|----------|-------|
-| MPIIGaze | ~3.4° | Good for laptop use |
-| ETH-XGaze | ~3.1° | Better head pose range |
-| GazeFollower | 1.11cm (~0.8°) | Trained on 32M images |
-| Custom ResNet-50 | ~2.5° | 33% better than VGG-16 |
+
+| Model            | Accuracy       | Notes                  |
+| ---------------- | -------------- | ---------------------- |
+| MPIIGaze         | ~3.4°          | Good for laptop use    |
+| ETH-XGaze        | ~3.1°          | Better head pose range |
+| GazeFollower     | 1.11cm (~0.8°) | Trained on 32M images  |
+| Custom ResNet-50 | ~2.5°          | 33% better than VGG-16 |
 
 **GazeFollower** is particularly promising with:
 

@@ -6,7 +6,7 @@
 
 ## Context
 
-EyeExam today is a single-user local PyQt6 desktop app. The stated end-state is a
+SightPath today is a single-user local PyQt6 desktop app. The stated end-state is a
 website plus native iOS/Android/macOS/Windows apps, with all customer data on a hosting
 server (see SCOPE.md).
 

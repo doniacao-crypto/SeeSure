@@ -3,7 +3,7 @@ set -euo pipefail
 
 BRANCH="${BRANCH:-main}"
 
-echo "=== EyeExam CI ==="
+echo "=== SightPath CI ==="
 echo "Branch: $BRANCH"
 
 # Install dependencies
@@ -26,4 +26,4 @@ echo "--- Running E2E tests ---"
 npx playwright install chromium 2>/dev/null || true
 npx playwright test --reporter=list
 
-echo "=== EyeExam CI PASSED ==="
+echo "=== SightPath CI PASSED ==="

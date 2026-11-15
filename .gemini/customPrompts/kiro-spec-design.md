@@ -249,9 +249,10 @@ When included, provide concise Mermaid diagrams specific to the actual feature r
 Generate traceability mapping ONLY for complex features with multiple requirements or when explicitly needed for compliance/validation.
 
 When included, create a mapping table showing how each EARS requirement is realized:
-| Requirement | Requirement Summary | Components | Interfaces | Flows |
-|---------------|-------------------|------------|------------|-------|
-| 1.1 | Brief description | Component names | API/Methods | Relevant flow diagrams |
+
+| Requirement | Requirement Summary | Components      | Interfaces  | Flows                  |
+| ----------- | ------------------- | --------------- | ----------- | ---------------------- |
+| 1.1         | Brief description   | Component names | API/Methods | Relevant flow diagrams |
 
 Alternative format for simpler cases:
 
@@ -320,9 +321,10 @@ interface [ComponentName]Service {
 - **Invariants**: What remains true throughout
 
 **API Contract** (for REST/GraphQL endpoints):
-| Method | Endpoint | Request | Response | Errors |
-|--------|----------|---------|----------|--------|
-| POST | /api/resource | CreateRequest | Resource | 400, 409, 500 |
+
+| Method | Endpoint      | Request       | Response | Errors        |
+| ------ | ------------- | ------------- | -------- | ------------- |
+| POST   | /api/resource | CreateRequest | Resource | 400, 409, 500 |
 
 With detailed schemas only for complex payloads
 

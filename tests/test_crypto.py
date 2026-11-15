@@ -99,7 +99,7 @@ class TestInitKey:
 
         from src import crypto
         crypto.init_key()
-        assert ("EyeExam", "phi_encryption_key") in stored
+        assert ("SightPath", "phi_encryption_key") in stored
 
     def test_second_init_raises(self, monkeypatch):
         existing_key = make_fernet_key()
@@ -108,6 +108,50 @@ class TestInitKey:
         from src import crypto
         with pytest.raises(RuntimeError, match="already exists"):
             crypto.init_key()
+
+    def test_legacy_key_counts_as_existing(self, monkeypatch):
+        """A key under the pre-rename service name must not be replaced by a new one.
+
+        Generating a second key would leave every stored .phi file unreadable.
+        """
+        stored = {("EyeExam", "phi_encryption_key"): make_fernet_key()}
+        monkeypatch.setattr("keyring.get_password", lambda s, a: stored.get((s, a)))
+        monkeypatch.setattr("keyring.set_password", lambda s, a, v: stored.__setitem__((s, a), v))
+
+        from src import crypto
+        with pytest.raises(RuntimeError, match="already exists"):
+            crypto.init_key()
+        assert ("SightPath", "phi_encryption_key") not in stored
+
+
+class TestLegacyKeyMigration:
+    """The app was renamed from EyeExam to SightPath; the PHI key had to move with it."""
+
+    def test_key_is_moved_from_the_legacy_service(self, monkeypatch):
+        legacy_key = make_fernet_key()
+        stored = {("EyeExam", "phi_encryption_key"): legacy_key}
+        monkeypatch.setattr("keyring.get_password", lambda s, a: stored.get((s, a)))
+        monkeypatch.setattr("keyring.set_password", lambda s, a, v: stored.__setitem__((s, a), v))
+        monkeypatch.setattr("keyring.delete_password", lambda s, a: stored.pop((s, a), None))
+
+        from src import crypto
+        assert crypto.get_fernet() is not None
+        assert stored[("SightPath", "phi_encryption_key")] == legacy_key
+        assert ("EyeExam", "phi_encryption_key") not in stored
+
+    def test_files_stay_readable_across_the_rename(self, monkeypatch):
+        """A record encrypted before the rename must still decrypt after it."""
+        legacy_key = make_fernet_key()
+        stored = {("EyeExam", "phi_encryption_key"): legacy_key}
+        monkeypatch.setattr("keyring.get_password", lambda s, a: stored.get((s, a)))
+        monkeypatch.setattr("keyring.set_password", lambda s, a, v: stored.__setitem__((s, a), v))
+        monkeypatch.setattr("keyring.delete_password", lambda s, a: stored.pop((s, a), None))
+
+        from src import crypto
+        from cryptography.fernet import Fernet
+        ciphertext = Fernet(legacy_key.encode()).encrypt(b'{"patient": "P001"}')
+
+        assert crypto.decrypt_json(ciphertext) == {"patient": "P001"}
 
 
 # ── PatientManager integration tests ─────────────────────────────────────────
@@ -166,7 +210,7 @@ class TestPatientManagerEncryption:
         # Now simulate missing key
         monkeypatch.setattr("keyring.get_password", lambda s, a: None)
         importlib.reload(cm); importlib.reload(pm_mod)
-        from src.crypto import MissingEncryptionKey
+        from crypto import MissingEncryptionKey
         with pytest.raises(MissingEncryptionKey):
             pm_mod.PatientManager(data_dir=tmp_path)
 

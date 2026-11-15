@@ -163,9 +163,10 @@ class PDFReportGenerator:
         
         metrics_data = [
             ["Metric", "Value", "Status"],
-            ["Tracking Success Rate", f"{result.tracking_ratio * 100:.1f}%", 
-             self._status_indicator(result.tracking_ratio * 100, 80, 60)],
-            ["Accuracy Score", f"{result.accuracy_score:.1f}/100",
+            # tracking_ratio is already a 0-100 percentage: frames with a usable gaze estimate.
+            ["Tracking Rate (valid frames)", f"{result.tracking_ratio:.1f}%",
+             self._status_indicator(result.tracking_ratio, 80, 60)],
+            ["Direction Match", f"{result.accuracy_score:.1f}/100",
              self._status_indicator(result.accuracy_score, 80, 60)],
             ["Smoothness Score", f"{result.smooth_score:.1f}/100",
              self._status_indicator(result.smooth_score, 70, 50)]
@@ -183,16 +184,21 @@ class PDFReportGenerator:
         story.append(self._create_metrics_table(metrics_data))
         story.append(Spacer(1, 0.3*inch))
         
-        # Clinical Interpretation
-        story.append(Paragraph("Clinical Interpretation", self.styles['SectionHeader']))
+        # Readings against provisional thresholds
+        story.append(Paragraph("Readings Against Provisional Thresholds", self.styles['SectionHeader']))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#bdc3c7')))
-        
+        story.append(Paragraph(
+            "The thresholds used here are not clinically validated and the gaze estimate's own "
+            "gain moves these numbers. These are measurements, not a clinical interpretation.",
+            self.styles['MetricLabel']
+        ))
+
         interpretations = self._get_pursuit_interpretations(result)
         for interp in interpretations:
             story.append(Paragraph(f"• {interp}", self.styles['Interpretation']))
-        
+
         story.append(Spacer(1, 0.3*inch))
-        
+
         # Trajectory plot placeholder
         if include_trajectory:
             story.append(Paragraph("Trajectory Visualization", self.styles['SectionHeader']))
@@ -200,13 +206,14 @@ class PDFReportGenerator:
                 "(Trajectory plots available in exported images)",
                 self.styles['MetricLabel']
             ))
-        
+
         # Disclaimer
         story.append(Spacer(1, 0.5*inch))
         story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#bdc3c7')))
         story.append(Paragraph(
-            "DISCLAIMER: This is a screening tool only. Results should be interpreted by a qualified "
-            "eye care professional. This report does not constitute a medical diagnosis.",
+            "DISCLAIMER: This is a screening tool only and its thresholds are not clinically "
+            "validated. Results should be interpreted by a qualified eye care professional. "
+            "This report does not constitute a medical diagnosis.",
             self.styles['Disclaimer']
         ))
         
@@ -415,27 +422,34 @@ class PDFReportGenerator:
             return "✗ Abnormal"
     
     def _get_pursuit_interpretations(self, result) -> List[str]:
-        """Get clinical interpretations for pursuit test."""
+        """Readings against provisional thresholds. Not a clinical interpretation.
+
+        The thresholds are not clinically validated (docs/clinical/sign-off-register.md), and
+        the gaze estimate's own gain moves these numbers, so the wording reports what was
+        measured and leaves the reading to the clinician.
+        """
         interpretations = []
-        
+
         if result.clinical_metrics is not None:
             if result.pursuit_gain >= 0.8:
-                interpretations.append("Pursuit gain is within normal limits (≥0.8)")
+                interpretations.append("Pursuit gain within the provisional band (>=0.8)")
             elif result.pursuit_gain >= 0.7:
-                interpretations.append("Pursuit gain is borderline (0.7-0.8) - recommend monitoring")
+                interpretations.append("Pursuit gain in the borderline band (0.7-0.8)")
             else:
-                interpretations.append("Pursuit gain is reduced (<0.7) - recommend further evaluation")
-            
+                interpretations.append("Pursuit gain below the provisional band (<0.7)")
+
             if result.accuracy_degrees <= 2.0:
-                interpretations.append("Tracking accuracy is within normal limits (≤2°)")
+                interpretations.append("Tracking accuracy within the provisional band (<=2 deg)")
             else:
-                interpretations.append(f"Tracking accuracy is reduced ({result.accuracy_degrees:.2f}°)")
-        
+                interpretations.append(
+                    f"Tracking accuracy above the provisional band ({result.accuracy_degrees:.2f} deg)"
+                )
+
         if result.smooth_score >= 70:
             interpretations.append("Eye movements are smooth with minimal saccadic intrusions")
         elif result.smooth_score >= 50:
             interpretations.append("Some saccadic intrusions noted during pursuit")
         else:
-            interpretations.append("Significant saccadic intrusions - may indicate pursuit dysfunction")
-        
+            interpretations.append("Significant saccadic intrusions during pursuit")
+
         return interpretations

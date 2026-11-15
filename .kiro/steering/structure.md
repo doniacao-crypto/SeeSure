@@ -3,7 +3,7 @@
 ## Directory Organization
 
 ```
-EyeExam/
+SightPath/
 ├── .kiro/
 │   ├── steering/           # Project context and guidelines
 │   ├── specs/              # Feature specifications

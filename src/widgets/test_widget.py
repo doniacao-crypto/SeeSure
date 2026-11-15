@@ -41,10 +41,11 @@ class TestWidget(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self._check_test_complete)
 
-    def start_test(self, config: TestConfig):
+    def start_test(self, config: TestConfig, pupil_distance_mm: float = 0.0):
         """Start the test after widget is properly sized."""
         # Store config and delay start to ensure widget is resized after fullscreen
         self._pending_config = config
+        self._pupil_distance_mm = pupil_distance_mm
         QTimer.singleShot(100, self._begin_test)
 
     def _begin_test(self):
@@ -61,6 +62,9 @@ class TestWidget(QWidget):
         height = self.height()
 
         self.test = SmoothPursuitTest(width, height, config)
+        # Record whether the gaze feeding this run was calibrated, so an uncalibrated score
+        # can never be mistaken for a genuine one when the result is read back later.
+        self.test.uncalibrated = not self.gaze_estimator.is_calibrated
         self.test.start()
         self.is_testing = True
         self.timer.start(100)  # Check every 100ms
@@ -118,7 +122,7 @@ class TestWidget(QWidget):
         if self.test and self.test.is_complete():
             self.timer.stop()
             self.is_testing = False
-            result = self.test.stop()
+            result = self.test.stop(pupil_distance_mm=self._pupil_distance_mm)
             if result:
                 self.test_complete.emit(result)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Eye Movement Assessment System - Launcher
+SightPath - Launcher
 Run this script to start the application.
 """
 

@@ -2,7 +2,11 @@
 PHI Encryption Helpers — Fernet symmetric encryption + OS keychain.
 
 Key is stored in the OS keychain (macOS Keychain / Windows Credential Store /
-libsecret on Linux) under service="EyeExam", account="phi_encryption_key".
+libsecret on Linux) under service="SightPath", account="phi_encryption_key".
+
+The application was renamed from EyeExam to SightPath after the first release. The key
+lived under the old service name, so it is moved to the new one on first read: renaming the
+service without moving the key would make every existing .phi file unreadable.
 
 IMPORTANT: If the keychain entry is missing on a machine that has existing
 .phi files, those files are unreadable until the key is restored from backup.
@@ -15,7 +19,8 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken
 import keyring
 
-_SERVICE = "EyeExam"
+_SERVICE = "SightPath"
+_LEGACY_SERVICE = "EyeExam"
 _KEY_ACCOUNT = "phi_encryption_key"
 
 
@@ -33,6 +38,17 @@ def _get_key() -> bytes:
     """
     raw = keyring.get_password(_SERVICE, _KEY_ACCOUNT)
     if raw is None:
+        # The key was stored under the old service name before the rename. Move it rather
+        # than orphan it: the existing patient files depend on this exact key.
+        legacy = keyring.get_password(_LEGACY_SERVICE, _KEY_ACCOUNT)
+        if legacy is not None:
+            keyring.set_password(_SERVICE, _KEY_ACCOUNT, legacy)
+            try:
+                keyring.delete_password(_LEGACY_SERVICE, _KEY_ACCOUNT)
+            except Exception:
+                pass  # The copy under the new name is what matters.
+            raw = legacy
+    if raw is None:
         raise MissingEncryptionKey(
             f"PHI encryption key not found in OS keychain "
             f"(service='{_SERVICE}', account='{_KEY_ACCOUNT}'). "
@@ -49,6 +65,10 @@ def init_key() -> None:
     (prevents accidental overwrite that would make existing files unreadable).
     """
     existing = keyring.get_password(_SERVICE, _KEY_ACCOUNT)
+    if existing is None:
+        # A key under the pre-rename service name counts as existing: generating a second
+        # key here would leave the stored patient files unreadable.
+        existing = keyring.get_password(_LEGACY_SERVICE, _KEY_ACCOUNT)
     if existing is not None:
         raise RuntimeError(
             "PHI encryption key already exists in OS keychain. "

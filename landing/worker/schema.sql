@@ -1,4 +1,4 @@
--- D1 Database Schema for EyeExam Waitlist
+-- D1 Database Schema for SightPath Waitlist
 
 CREATE TABLE IF NOT EXISTS waitlist (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -8,6 +8,21 @@ import tempfile
 import os
 import json
 
+@pytest.fixture(autouse=True)
+def mock_keyring(monkeypatch):
+    """Mock OS keyring with in-memory store for all integration tests.
+
+    patient_manager.create() calls encrypt_json -> _get_password -> keyring.get_password.
+    Without this fixture, tests hit the real OS keychain and fail with MissingEncryptionKey.
+    """
+    store = {}
+    monkeypatch.setattr("keyring.get_password", lambda s, a: store.get((s, a)))
+    monkeypatch.setattr("keyring.set_password", lambda s, a, v: store.__setitem__((s, a), v))
+    monkeypatch.setattr("keyring.delete_password", lambda s, a: store.pop((s, a), None))
+    # Initialize a key so encryption/decryption works
+    from crypto import init_key
+    init_key()
+
 
 class TestPatientWorkflow:
     """Test patient management integration."""

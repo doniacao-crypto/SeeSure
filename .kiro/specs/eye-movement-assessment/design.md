@@ -889,7 +889,7 @@ pillow>=10.0.0          # Image handling for reports
 ## 11. File Structure After Implementation
 
 ```
-EyeExam/
+SightPath/
 ├── src/
 │   ├── __init__.py
 │   ├── eye_tracker.py          # Existing - MediaPipe integration

@@ -1,5 +1,5 @@
 /**
- * EyeExam Landing Page Script
+ * SightPath Landing Page Script
  * Handles form submission, mobile menu, and smooth scrolling
  */
 
@@ -107,9 +107,9 @@
           showMessage('Thank you! Click below to send your request.', 'success');
 
           // Create a fallback link
-          const subject = encodeURIComponent('EyeExam Waitlist Request');
+          const subject = encodeURIComponent('SightPath Waitlist Request');
           const body = encodeURIComponent(
-            'Please add me to the EyeExam waitlist.\n\nEmail: ' +
+            'Please add me to the SightPath waitlist.\n\nEmail: ' +
               email +
               "\n\nI'm interested in early access."
           );

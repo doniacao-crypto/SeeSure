@@ -22,7 +22,7 @@ Two compounding problems:
    A clinician spot-checking one value against one paper, finding a mismatch, will
    distrust the entire table.
 2. **Instrument mismatch.** The cited norms are derived from **laboratory eye trackers**
-   (high sampling rate, sub-degree accuracy). EyeExam metrics are **webcam-derived**.
+   (high sampling rate, sub-degree accuracy). SightPath metrics are **webcam-derived**.
    Lower sampling rate and higher noise systematically bias latency and velocity, so even
    correctly-transcribed lab norms may flag healthy patients as abnormal purely from
    instrument difference. Also: BCEA has only 3 age groups where others have 5.

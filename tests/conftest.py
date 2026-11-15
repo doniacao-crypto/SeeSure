@@ -1,5 +1,5 @@
 """
-Shared test fixtures for the EyeExam test suite.
+Shared test fixtures for the SightPath test suite.
 Provides sys.path configuration and common temporary directory fixtures.
 """
 
