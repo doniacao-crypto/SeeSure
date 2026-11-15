@@ -21,6 +21,7 @@ For orientation: research-grade webcam gaze ≈ 2–4° visual angle; commercial
 ## Decision
 
 **Accuracy target (provisional):**
+
 - **≤ 1.5° mean gaze error at ~60 cm viewing distance**
 - **≤ 2.5° worst-point error**
 - Clinical Lead to confirm whether the diagnostic protocols (saccade / fixation / pursuit)
@@ -28,6 +29,7 @@ For orientation: research-grade webcam gaze ≈ 2–4° visual angle; commercial
   the written commitment the accuracy work targets.
 
 **Ground-truth strategy (tiered, cheapest → strongest):**
+
 1. **Now — fixed-head grid test.** Chin rest / forehead braced, dots at known screen
    angles. Cheap, catches gross error. Still shares calibration bias; a floor, not proof.
 2. **Before the pilot — repair the Clinical Lead's device** and run subjects on SightPath

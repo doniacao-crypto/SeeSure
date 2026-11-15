@@ -26,6 +26,7 @@ key backup/restore. The pilot deliberately does not touch the multi-jurisdiction
 
 **Product (hosted):** design to the **strictest superset** of the applicable regimes
 ("highest common denominator"), because patients span all of them:
+
 - Encryption **at rest and in transit**; key management **not** tied to a single OS keychain.
 - **Per-user access control + full audit trail** (HIPAA), lawful basis + **explicit consent**
   and data-subject rights incl. erasure (GDPR), separate consent + local processing (PIPL).

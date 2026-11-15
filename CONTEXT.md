@@ -24,7 +24,7 @@ lower means the eye lags and must catch up with corrective saccades.
 
 **Saccade** — rapid ballistic eye movement between fixation points.
 
-**Pro-saccade** — look *toward* the stimulus. **Anti-saccade** — look *away* from it;
+**Pro-saccade** — look _toward_ the stimulus. **Anti-saccade** — look _away_ from it;
 requires inhibitory control, so error rate is clinically informative.
 
 **Fixation** — holding gaze steady on a stationary target.
@@ -42,7 +42,7 @@ clinically; pixels are an implementation detail and must not appear in clinical 
 **Calibration** — mapping raw gaze estimates to screen coordinates, currently via a
 9-point procedure. Calibration quality bounds every downstream metric.
 
-**Validation** — measuring residual gaze error *after* calibration against known targets.
+**Validation** — measuring residual gaze error _after_ calibration against known targets.
 Distinct from calibration: calibration fits, validation checks.
 
 **Session** — one sitting: calibration plus one or more tests, producing metrics and

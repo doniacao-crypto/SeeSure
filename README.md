@@ -103,13 +103,13 @@ After each test:
 
 ### What the report shows
 
-| Reading          | What it means                                                        |
-| ---------------- | -------------------------------------------------------------------- |
-| Tracking Rate    | Share of frames that produced a usable gaze estimate (data validity) |
-| Direction Match  | How often the gaze moved in the same direction as the target         |
-| Speed Match      | How closely the gaze speed matched the target speed                  |
-| Pursuit Gain     | Clinical: eye velocity / target velocity                             |
-| Accuracy         | Clinical: RMS error in degrees of visual angle                       |
+| Reading         | What it means                                                        |
+| --------------- | -------------------------------------------------------------------- |
+| Tracking Rate   | Share of frames that produced a usable gaze estimate (data validity) |
+| Direction Match | How often the gaze moved in the same direction as the target         |
+| Speed Match     | How closely the gaze speed matched the target speed                  |
+| Pursuit Gain    | Clinical: eye velocity / target velocity                             |
+| Accuracy        | Clinical: RMS error in degrees of visual angle                       |
 
 The thresholds are **provisional and not clinically validated** — see
 `docs/clinical/sign-off-register.md`. A low pursuit gain reflects the gaze estimate's own

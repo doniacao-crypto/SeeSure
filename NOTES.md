@@ -15,6 +15,7 @@
 
 **What happened this session:** ran `/setup` Phase 0 + `/grill-with-docs`. Reframed the
 project and recorded 5 ADRs. Key reframes:
+
 - **Product ≠ current app.** End-state = website + iOS/Android/macOS/Windows, all data
   server-hosted. Current PyQt6 app = pilot instrument only. Architecture = **hybrid**
   (ADR 0001): one TS+MediaPipe web tracking client wrapped to all targets; Python server
